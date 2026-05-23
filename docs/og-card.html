@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=Azeret+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      width: 1200px;
+      height: 627px;
+      background: #080808;
+      overflow: hidden;
+      position: relative;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* orange left bar */
+    .bar {
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      width: 5px;
+      background: #ff6d2e;
+    }
+
+    /* faint background letterform */
+    .bg-letter {
+      position: absolute;
+      right: -20px;
+      top: -60px;
+      font-family: 'Chakra Petch', monospace;
+      font-weight: 700;
+      font-size: 560px;
+      line-height: 1;
+      color: rgba(255, 109, 46, 0.04);
+      user-select: none;
+      letter-spacing: -10px;
+    }
+
+    /* scanlines */
+    body::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg, transparent, transparent 2px,
+        rgba(0,0,0,0.06) 2px, rgba(0,0,0,0.06) 3px
+      );
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .content {
+      position: relative;
+      z-index: 1;
+      padding: 58px 80px 58px 86px;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    /* ── TOP ── */
+    .top {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+    }
+
+    .brand {
+      font-family: 'Chakra Petch', monospace;
+      font-weight: 700;
+      font-size: 32px;
+      color: #f0f0f0;
+      letter-spacing: -0.5px;
+    }
+
+    .brand-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #ff6d2e;
+      margin-top: 4px;
+      flex-shrink: 0;
+    }
+
+    .badge {
+      font-family: 'Azeret Mono', monospace;
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 1.5px;
+      color: #ff6d2e;
+      border: 1.5px solid rgba(255, 109, 46, 0.35);
+      padding: 5px 12px;
+    }
+
+    /* ── HEADLINE ── */
+    .headline {
+      font-family: 'Azeret Mono', monospace;
+      font-size: 52px;
+      font-weight: 400;
+      line-height: 1.12;
+      letter-spacing: -1.5px;
+      color: #c8c8c8;
+      max-width: 860px;
+    }
+
+    .headline em {
+      font-style: normal;
+      color: #ff6d2e;
+    }
+
+    /* ── BOTTOM ── */
+    .bottom {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+    }
+
+    .tags {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      max-width: 720px;
+    }
+
+    .tag {
+      font-family: 'Azeret Mono', monospace;
+      font-size: 12px;
+      font-weight: 400;
+      color: #666666;
+      background: rgba(255, 109, 46, 0.05);
+      padding: 6px 13px;
+      border: 1px solid rgba(255, 109, 46, 0.12);
+    }
+
+    .url {
+      font-family: 'Azeret Mono', monospace;
+      font-size: 13px;
+      color: #444444;
+      flex-shrink: 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="bar"></div>
+  <div class="bg-letter">F</div>
+
+  <div class="content">
+    <div class="top">
+      <div class="brand">frit</div>
+      <div class="brand-dot"></div>
+      <div class="badge">// gpu reliability engineering</div>
+    </div>
+
+    <div class="headline">
+      One Tesla T4.<br><em>The Full Inference Stack.</em><br>Production SRE Patterns.
+    </div>
+
+    <div class="bottom">
+      <div class="tags">
+        <span class="tag">Tesla T4</span>
+        <span class="tag">vLLM</span>
+        <span class="tag">DCGM</span>
+        <span class="tag">Prometheus</span>
+        <span class="tag">SLOs</span>
+        <span class="tag">Chaos Engineering</span>
+        <span class="tag">Go</span>
+      </div>
+      <div class="url">75asu.github.io/frit</div>
+    </div>
+  </div>
+</body>
+</html>

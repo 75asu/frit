@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>frit — GPU reliability engineering at homelab scale</title>
+  <meta name="description" content="One Tesla T4. The full inference stack: vLLM, LiteLLM, Open WebUI, DCGM. Real SLOs, chaos experiments, postmortems. One GPU practicing patterns that hold at 1000." />
+  <link rel="canonical" href="https://75asu.github.io/frit" />
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
+  <meta property="og:site_name" content="frit" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="frit — GPU reliability engineering at homelab scale" />
+  <meta property="og:description" content="One Tesla T4. The full inference stack: vLLM, LiteLLM, Open WebUI, DCGM. Real SLOs, chaos experiments, postmortems. One GPU practicing patterns that hold at 1000." />
+  <meta property="og:url" content="https://75asu.github.io/frit" />
+  <meta property="og:image" content="https://75asu.github.io/frit/og.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="627" />
+  <meta property="og:locale" content="en_US" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="frit — GPU reliability engineering at homelab scale" />
+  <meta name="twitter:description" content="One Tesla T4. The full inference stack: vLLM, LiteLLM, Open WebUI, DCGM. Real SLOs, chaos experiments, postmortems. One GPU practicing patterns that hold at 1000." />
+  <meta name="twitter:image" content="https://75asu.github.io/frit/og.png" />
+
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect x='12' y='12' width='76' height='76' rx='2' fill='none' stroke='%23ff6d2e' stroke-width='6'/><line x1='30' y1='38' x2='70' y2='38' stroke='%23ff6d2e' stroke-width='5'/><line x1='30' y1='54' x2='56' y2='54' stroke='%23ff6d2e' stroke-width='5'/><line x1='30' y1='70' x2='44' y2='70' stroke='%23ff6d2e' stroke-width='5'/></svg>" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=Azeret+Mono:wght@300;400;500;600&display=swap" rel="stylesheet" />
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #080808;
+      --text:    #c8c8c8;
+      --text2:   #666666;
+      --text3:   #383838;
+      --hi:      #f0f0f0;
+      --acc:     #ff6d2e;
+      --acc-dim: rgba(255, 109, 46, 0.12);
+      --acc-mid: rgba(255, 109, 46, 0.35);
+      --border:  rgba(255,255,255,0.07);
+    }
+
+    [data-theme="light"] {
+      --bg:      #f8f6f3;
+      --text:    #444444;
+      --text2:   #888888;
+      --text3:   #c0c0c0;
+      --hi:      #111111;
+      --acc:     #d44a10;
+      --acc-dim: rgba(212, 74, 16, 0.08);
+      --acc-mid: rgba(212, 74, 16, 0.25);
+      --border:  rgba(0,0,0,0.09);
+    }
+
+    html, body {
+      height: 100%;
+      overflow: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Azeret Mono', 'Fira Code', monospace;
+      -webkit-font-smoothing: antialiased;
+      transition: background 0.3s, color 0.3s;
+    }
+
+    /* scanlines */
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg, transparent, transparent 2px,
+        rgba(0,0,0,0.055) 2px, rgba(0,0,0,0.055) 3px
+      );
+      pointer-events: none;
+      z-index: 999;
+    }
+
+    /* ── toggle ── */
+    .toggle {
+      position: fixed;
+      top: 22px; right: 24px;
+      z-index: 200;
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      border: 1.5px solid var(--text2);
+      background: transparent;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 15px;
+      color: var(--text2);
+      outline: none;
+      transition: border-color 0.2s, color 0.2s;
+    }
+    .toggle:hover { border-color: var(--acc); color: var(--acc); }
+    [data-theme="dark"]  .icon-sun  { display: inline; }
+    [data-theme="dark"]  .icon-moon { display: none; }
+    [data-theme="light"] .icon-sun  { display: none; }
+    [data-theme="light"] .icon-moon { display: inline; }
+
+    /* ── layout: two columns ── */
+    .shell {
+      display: grid;
+      grid-template-columns: 1fr 1.6fr;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* LEFT PANEL */
+    .left {
+      padding: 48px 40px 40px 10vw;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      border-right: 1px solid var(--border);
+      position: relative;
+    }
+
+    .left-top {}
+
+    .wordmark {
+      font-size: clamp(72px, 10vw, 120px);
+      font-family: 'Chakra Petch', monospace;
+      font-weight: 700;
+      color: var(--hi);
+      letter-spacing: -0.02em;
+      line-height: 1;
+      margin-bottom: 16px;
+    }
+
+    .tagline {
+      font-size: 13px;
+      font-weight: 400;
+      color: var(--text2);
+      letter-spacing: 0.02em;
+      line-height: 1.7;
+      margin-bottom: 28px;
+      max-width: 240px;
+    }
+
+    .wip {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 5px 12px;
+      border: 1px solid var(--acc-mid);
+      background: var(--acc-dim);
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--acc);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .wip-dot {
+      width: 5px; height: 5px;
+      border-radius: 50%;
+      background: var(--acc);
+      animation: blink 1.6s ease-in-out infinite;
+      flex-shrink: 0;
+    }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.15} }
+
+    /* left desc */
+    .left-desc {
+      font-size: 15px;
+      font-weight: 400;
+      color: var(--text2);
+      line-height: 1.85;
+      max-width: 300px;
+    }
+    .left-desc .hi { color: var(--text); font-weight: 500; }
+    .left-desc .acc { color: var(--acc); font-weight: 500; }
+
+    /* left footer */
+    .left-foot {
+      font-size: 13px;
+      color: var(--text3);
+      line-height: 1.9;
+    }
+    .left-foot a {
+      color: var(--text2);
+      text-decoration: none;
+      transition: color 0.15s;
+    }
+    .left-foot a:hover { color: var(--acc); }
+
+    /* ── RIGHT PANEL ── */
+    .right {
+      padding: 48px 10vw 40px 40px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 0;
+    }
+
+    /* section label */
+    .section-lbl {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text3);
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .section-lbl::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    /* milestone rows */
+    .ms-list { display: flex; flex-direction: column; gap: 0; }
+
+    .ms {
+      display: grid;
+      grid-template-columns: 28px 1fr auto;
+      align-items: center;
+      gap: 0 14px;
+      padding: 9px 0;
+      border-bottom: 1px solid var(--border);
+      transition: background 0.15s;
+    }
+    .ms:last-child { border-bottom: none; }
+    .ms:not(.ms-active):hover { background: rgba(255,255,255,0.018); }
+
+    .ms-num {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text3);
+      letter-spacing: 0.06em;
+    }
+    .ms-active .ms-num { color: var(--acc); }
+
+    .ms-name {
+      font-size: 15px;
+      font-weight: 400;
+      color: var(--text2);
+      letter-spacing: 0.01em;
+    }
+    .ms-active .ms-name { color: var(--hi); font-weight: 500; }
+
+    .ms-sub {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text3);
+      letter-spacing: 0.02em;
+      margin-top: 2px;
+      grid-column: 2;
+    }
+
+    .ms-badge {
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.10em;
+      text-transform: uppercase;
+      padding: 3px 8px;
+      border: 1px solid;
+      white-space: nowrap;
+      align-self: center;
+    }
+    .badge-active { color: var(--acc); border-color: var(--acc-mid); background: var(--acc-dim); }
+    .badge-q      { color: var(--text3); border-color: var(--text3); opacity: 0.5; }
+
+    .cursor {
+      display: inline-block;
+      width: 7px; height: 13px;
+      background: var(--acc);
+      vertical-align: text-bottom;
+      margin-left: 1px;
+      animation: cur 1s step-end infinite;
+    }
+    @keyframes cur { 50% { opacity: 0; } }
+
+    /* later row */
+    .ms-later {
+      padding: 10px 0 0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .ms-later-text {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text3);
+      letter-spacing: 0.04em;
+      opacity: 0.55;
+    }
+    .ms-later-line {
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+      opacity: 0.5;
+    }
+
+    /* ── mobile ── */
+    @media (max-width: 700px) {
+      html, body { overflow: auto; }
+      .shell {
+        grid-template-columns: 1fr;
+        height: auto;
+        overflow: visible;
+      }
+      .left {
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+        padding: 40px 24px 32px;
+        gap: 28px;
+      }
+      .right { padding: 32px 24px 48px; }
+      .toggle { right: 18px; top: 18px; }
+    }
+  </style>
+</head>
+<body>
+
+  <button class="toggle" onclick="toggleTheme()" aria-label="Toggle theme">
+    <span class="icon-sun">&#9728;</span>
+    <span class="icon-moon">&#9790;</span>
+  </button>
+
+  <div class="shell">
+
+    <!-- LEFT -->
+    <aside class="left">
+      <div class="left-top">
+        <div class="wordmark">frit</div>
+        <div class="tagline">GPU reliability engineering<br>at homelab scale</div>
+        <div class="wip"><span class="wip-dot"></span>work in progress</div>
+      </div>
+
+      <div class="left-desc">
+        One <span class="hi">Tesla T4</span>. <span class="hi">16GB VRAM</span>.
+        The full inference stack: <span class="acc">vLLM</span>,
+        <span class="acc">LiteLLM</span>, <span class="acc">Open WebUI</span>,
+        <span class="acc">DCGM</span>. Real SLOs, chaos experiments,
+        postmortems. One GPU practicing patterns<br>that hold at 1000.
+      </div>
+
+      <div class="left-foot">
+        github.com/75asu/frit<br>
+        <a href="https://75asu.pages.dev" target="_blank" rel="noopener">by @75asu</a>
+      </div>
+    </aside>
+
+    <!-- RIGHT -->
+    <section class="right">
+      <div class="section-lbl">milestones</div>
+      <div class="ms-list">
+
+        <div class="ms ms-active">
+          <span class="ms-num">M0</span>
+          <span class="ms-name">GPU Foundation</span>
+          <span class="ms-badge badge-active">in progress<span class="cursor"></span></span>
+          <span class="ms-sub">Tesla T4, DCGM, Docker GPU passthrough</span>
+        </div>
+
+        <div class="ms">
+          <span class="ms-num">M1</span>
+          <span class="ms-name">GPU Metrics Exporter</span>
+          <span class="ms-badge badge-q">queued</span>
+          <span class="ms-sub">NVML &rarr; Prometheus, custom Go binary</span>
+        </div>
+
+        <div class="ms">
+          <span class="ms-num">M2</span>
+          <span class="ms-name">DCGM + Observability Stack</span>
+          <span class="ms-badge badge-q">queued</span>
+          <span class="ms-sub">Grafana dashboards, Alertmanager rules</span>
+        </div>
+
+        <div class="ms">
+          <span class="ms-num">M3</span>
+          <span class="ms-name">Inference Layer + Token Path</span>
+          <span class="ms-badge badge-q">queued</span>
+          <span class="ms-sub">vLLM + LiteLLM + Open WebUI, TTFT dashboard</span>
+        </div>
+
+        <div class="ms-later">
+          <span class="ms-later-text">M4 - M8 &nbsp;·&nbsp; SLOs, load testing, chaos, postmortems, OSS cadence</span>
+          <span class="ms-later-line"></span>
+        </div>
+
+      </div>
+    </section>
+
+  </div>
+
+  <script>
+    const html = document.documentElement;
+    const saved = localStorage.getItem('frit-theme');
+    if (saved) html.setAttribute('data-theme', saved);
+    function toggleTheme() {
+      const next = html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      html.setAttribute('data-theme', next);
+      localStorage.setItem('frit-theme', next);
+    }
+  </script>
+
+</body>
+</html>
