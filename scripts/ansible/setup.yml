@@ -1,0 +1,160 @@
+---
+# frit — GPU lab prerequisites
+#
+# Run on the studio with:
+#   make setup
+#
+# Idempotent — safe to run multiple times. Each task checks before acting.
+# Tested on Ubuntu 24.04 LTS, Tesla T4, Driver 580.
+
+- name: frit studio prerequisites
+  hosts: all
+  become: true
+  environment:
+    PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+  vars:
+    go_version: "1.22.4"
+    ubuntu_codename: noble          # Ubuntu 24.04 = noble (22.04 = jammy)
+    cuda_repo_arch: x86_64
+
+  pre_tasks:
+
+    # ── Preflight ─────────────────────────────────────────────────────────────
+
+    - name: check GPU device is present
+      stat:
+        path: /dev/nvidia0
+      register: nvidia_dev
+      become: false
+
+    - name: assert GPU machine (fail fast if CPU studio)
+      assert:
+        that: nvidia_dev.stat.exists
+        fail_msg: |
+          No GPU detected (/dev/nvidia0 missing).
+          Studio is running on CPU. Restart on T4:
+            make stop && make start
+
+    - name: check apt system is ready
+      command: /usr/bin/apt-get -q check
+      register: apt_check
+      ignore_errors: true
+      changed_when: false
+
+    - name: assert apt is not locked (fail fast if studio still initializing)
+      assert:
+        that: apt_check.rc == 0
+        fail_msg: |
+          apt is locked — Lightning.ai studio is still initializing.
+          Wait ~2 min for the T4 to finish booting, then retry:
+            make setup
+
+  tasks:
+
+    # ── DCGM ────────────────────────────────────────────────────────────────
+    # DCGM (Data Center GPU Manager) — NVIDIA's production GPU monitoring
+    # daemon. Runs continuously, samples at high frequency, exposes XID
+    # errors and health checks that nvidia-smi cannot.
+
+    - name: remove legacy unsigned CUDA apt source if present
+      file:
+        path: /etc/apt/sources.list.d/cuda.list
+        state: absent
+
+    - name: add CUDA apt keyring
+      apt:
+        deb: "https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/{{ cuda_repo_arch }}/cuda-keyring_1.1-1_all.deb"
+        state: present
+
+    - name: install DCGM
+      apt:
+        name: datacenter-gpu-manager
+        update_cache: yes
+        state: present
+
+    - name: start and enable DCGM service
+      systemd:
+        name: nvidia-dcgm
+        state: started
+        enabled: yes
+
+    - name: verify DCGM sees the GPU
+      command: dcgmi discovery -l
+      register: dcgm_discovery
+      changed_when: false
+
+    - name: show DCGM discovery output
+      debug:
+        msg: "{{ dcgm_discovery.stdout_lines }}"
+
+    # ── nvidia-container-toolkit ─────────────────────────────────────────────
+    # Needed so Docker containers can access the GPU with --gpus all.
+    # Without this, docker run --gpus all fails even if the driver is installed.
+
+    - name: add nvidia-container-toolkit GPG key
+      shell: |
+        curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey \
+          | gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+      args:
+        creates: /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+
+    - name: add nvidia-container-toolkit apt repo
+      shell: |
+        curl -sL https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list \
+          | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' \
+          | tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+      args:
+        creates: /etc/apt/sources.list.d/nvidia-container-toolkit.list
+
+    - name: install nvidia-container-toolkit
+      apt:
+        name: nvidia-container-toolkit
+        update_cache: yes
+        state: present
+
+    - name: configure Docker nvidia runtime
+      command: nvidia-ctk runtime configure --runtime=docker
+      notify: restart docker
+
+    # ── Go ───────────────────────────────────────────────────────────────────
+
+    - name: check if Go is already installed
+      stat:
+        path: /usr/local/go/bin/go
+      register: go_binary
+
+    - name: download Go tarball
+      get_url:
+        url: "https://go.dev/dl/go{{ go_version }}.linux-amd64.tar.gz"
+        dest: "/tmp/go{{ go_version }}.tar.gz"
+        mode: '0644'
+      when: not go_binary.stat.exists
+
+    - name: install Go to /usr/local
+      unarchive:
+        src: "/tmp/go{{ go_version }}.tar.gz"
+        dest: /usr/local
+        remote_src: yes
+      when: not go_binary.stat.exists
+
+    - name: add Go to system PATH
+      lineinfile:
+        path: /etc/environment
+        regexp: '^PATH='
+        line: 'PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/go/bin"'
+
+    - name: verify Go version
+      command: /usr/local/go/bin/go version
+      register: go_version_out
+      changed_when: false
+
+    - name: show Go version
+      debug:
+        msg: "{{ go_version_out.stdout }}"
+
+  handlers:
+    - name: restart docker
+      systemd:
+        name: docker
+        state: restarted

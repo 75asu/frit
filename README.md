@@ -37,23 +37,64 @@ A public OSS project that demonstrates production-grade GPU reliability engineer
 
 ## Quick Start
 
+### Prerequisites
+
+- [Lightning.ai](https://lightning.ai) account with a T4 studio created
+- Python 3.x + `pip install lightning_sdk`
+
+### 1. Clone and configure
+
 ```bash
 git clone https://github.com/binarysquadd/frit.git && cd frit
-
-# Provision a fresh Lightning.ai T4 Studio
-make setup
-
-# Verify GPU health
-make checklist
-
-# Stream GPU metrics
-make metrics
-
-# Run a chaos experiment
-make chaos-memory
+make env   # copies .env.example → .env, then fill in your credentials
 ```
 
-Requires a Lightning.ai Studio with a T4 GPU (GPU Only, no IDE).
+Edit `.env` with your values:
+
+| Variable | Where to find it |
+|----------|-----------------|
+| `LIGHTNING_API_KEY` | Lightning.ai → profile icon → Keys → API key |
+| `LIGHTNING_USER_ID` | Same page, shown next to the API key |
+| `STUDIO_TEAMSPACE` | The teamspace name in your Lightning.ai URL |
+| `STUDIO_USER` | Your Lightning.ai username |
+| `STUDIO_NAME` | Name of your studio (default: `frit`) |
+
+### 2. Download SSH keys (once per machine)
+
+```bash
+make keys      # downloads ~/.lightning/lightning_rsa, writes Host frit into ~/.ssh/config
+```
+
+Idempotent — safe to re-run. The studio does not need to be running for this step.
+
+### 3. Start the studio and verify
+
+```bash
+make start     # boots the T4 (takes ~2-3 min to fully initialize)
+make status    # should print: Running
+make metrics   # should print live GPU stats from the T4
+```
+
+### 4. Provision the studio
+
+```bash
+make setup     # installs Go, DCGM, nvidia-container-toolkit via Ansible over SSH
+```
+
+If setup fails immediately, the preflight checks will tell you exactly why:
+- `No GPU detected` — studio started on CPU, run `make stop && make start`
+- `apt is locked` — T4 still initializing, wait 2 min and retry
+
+### Available commands
+
+```bash
+make metrics        # live GPU stats (temp, power, VRAM, utilization)
+make run CMD="..."  # run any command on the studio remotely
+make sync           # push local code changes to the studio
+make chaos-memory   # fill GPU VRAM and observe degradation
+make chaos-load     # run competing GPU workloads
+make clean          # kill all chaos containers
+```
 
 ---
 
@@ -64,12 +105,6 @@ Requires a Lightning.ai Studio with a T4 GPU (GPU Only, no IDE).
 - **Observability** — DCGM, Prometheus, Grafana, Alertmanager, Loki
 - **Custom tooling** — Go NVML exporter, chaos injector CLI, load tester
 - **Platform** — Lightning.ai (free tier T4)
-
----
-
-## Session Log
-
-Raw session notes in [`session-log.md`](session-log.md). Each session adds: what was done, what broke, what was measured.
 
 ---
 
