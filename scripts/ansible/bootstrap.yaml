@@ -216,23 +216,15 @@
     # PHASE 4 — Vault initialization + unseal
     # ═════════════════════════════════════════════════════════════════════════
 
-    # Two-step: wait for pod to exist, then wait for it to be Ready.
-    # kubectl wait fails with "no matching resources" if the pod doesn't exist yet.
-    - name: wait for Vault pod to exist
-      shell: kubectl get pod -n vault -l app.kubernetes.io/name=vault --no-headers 2>/dev/null | grep -qv "^$"
-      register: vault_pod_exists
+    # Vault readiness probe checks sealed/initialized state — the pod will never
+    # pass Ready until AFTER init+unseal. Wait for Running phase only, then init.
+    - name: wait for Vault pod to be Running
+      shell: kubectl get pod vault-0 -n vault --no-headers 2>/dev/null | grep -q "Running"
+      register: vault_running
       retries: 40
       delay: 15
-      until: vault_pod_exists.rc == 0
+      until: vault_running.rc == 0
       changed_when: false
-
-    - name: wait for Vault pod to be Ready
-      command: >
-        kubectl wait pod
-        --namespace vault
-        --selector app.kubernetes.io/name=vault
-        --for condition=Ready
-        --timeout=300s
 
     - name: check if Vault is already initialized
       shell: |
