@@ -9,6 +9,7 @@ metadata:
   namespace: open-webui
 spec:
   interval: 1h
+  timeout: 15m
   chart:
     spec:
       chart: open-webui
