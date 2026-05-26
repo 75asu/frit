@@ -2,3 +2,4 @@ models/
 *.gguf
 .env
 vendor/
+kubeconfig.yaml

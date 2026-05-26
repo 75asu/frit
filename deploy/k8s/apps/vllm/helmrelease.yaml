@@ -1,0 +1,55 @@
+---
+# vLLM production-stack — the CoreWeave/CNCF reference inference deployment.
+# Router: prefix-aware routing (routes to node holding matching KV cache prefix).
+# Worker: single T4 (16GB), Llama-3-8B.
+# Model weights: read from /teamspace/studios/this_studio/models/ (persists across T4 restarts).
+# HF token: pulled from Vault via hf-token ExternalSecret.
+#
+# Tune MODEL_NAME in .env — change it there, re-run make bootstrap to reseed Vault,
+# then update this HelmRelease value and push to Gitea.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: vllm
+  namespace: vllm
+spec:
+  interval: 1h
+  chart:
+    spec:
+      chart: vllm-stack
+      version: "0.*"
+      sourceRef:
+        kind: HelmRepository
+        name: vllm
+        namespace: flux-system
+  values:
+    servingEngineSpec:
+      replicaCount: 1
+      requestCPU: "4"
+      requestMemory: "16Gi"
+      requestGPU: 1
+      model: "microsoft/Phi-3-mini-4k-instruct"
+      extraEnv:
+        - name: HF_HUB_CACHE
+          value: /models
+      vllmConfig:
+        maxModelLen: 8192
+        enablePrefixCaching: true  # KV-cache prefix sharing — the llm-d routing pattern
+        dtype: auto
+      volumeMounts:
+        - name: model-cache
+          mountPath: /models
+      volumes:
+        - name: model-cache
+          hostPath:
+            path: /teamspace/studios/this_studio/models
+            type: DirectoryOrCreate
+    routerSpec:
+      replicaCount: 1
+      routing: "prefix"  # prefix-aware routing (CoreWeave pattern)
+      ingress:
+        enabled: true
+        className: traefik
+        host: vllm.frit.local
+    serviceMonitor:
+      enabled: true  # exposes TTFT, TBT, queue depth, KV cache hit rate to Prometheus

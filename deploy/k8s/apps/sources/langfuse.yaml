@@ -1,0 +1,10 @@
+---
+# Langfuse Helm chart (M5 — suspended until then)
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: langfuse
+  namespace: flux-system
+spec:
+  interval: 24h
+  url: https://langfuse.github.io/langfuse-k8s

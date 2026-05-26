@@ -1,0 +1,237 @@
+---
+# frit — k3s single-node cluster install
+#
+# Installs k3s, Helm, and Go on the T4 studio.
+# The NVIDIA GPU Operator (deployed via Flux in bootstrap.yaml) handles
+# the device plugin, DCGM exporter, and containerd runtime — not this playbook.
+#
+# Run via site.yaml or directly:
+#   make k3s
+
+- name: frit k3s cluster
+  hosts: all
+  become: true
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+    PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/go/bin"
+
+  vars:
+    go_version: "1.22.4"
+    k3s_version: "v1.32.4+k3s1"
+    helm_version: "v3.17.3"
+
+  pre_tasks:
+
+    - name: check GPU device is present
+      stat:
+        path: /dev/nvidia0
+      register: nvidia_dev
+      become: false
+
+    - name: assert GPU machine (fail fast if CPU studio)
+      assert:
+        that: nvidia_dev.stat.exists
+        fail_msg: |
+          No GPU detected (/dev/nvidia0 missing).
+          Studio is running on CPU. Restart on T4:
+            make stop && make start
+
+    # Remove conflicting CUDA apt sources BEFORE the apt check.
+    # Lightning.ai T4 ships with a malformed cuda.list that causes
+    # `apt-get check` to return rc=100 (Signed-By conflict).
+    - name: remove legacy/conflicting CUDA apt sources (pre-cleanup)
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/apt/sources.list.d/cuda.list
+        - /etc/apt/sources.list.d/cuda-ubuntu2404-x86_64.list
+
+    - name: wait for apt-get/dpkg to finish (studio initializes for ~2min)
+      shell: "pgrep -x apt-get || pgrep -x dpkg || echo none"
+      register: apt_procs
+      changed_when: false
+      retries: 24
+      delay: 15
+      until: apt_procs.stdout | trim == "none"
+
+  tasks:
+
+    # ── k3s ───────────────────────────────────────────────────────────────────
+    # Single-node install. Traefik ingress is kept (built-in, used for routing).
+    # GPU passthrough is handled by the NVIDIA GPU Operator deployed in bootstrap.
+
+    - name: check if k3s is already installed
+      stat:
+        path: /usr/local/bin/k3s
+      register: k3s_binary
+
+    # Install without starting — we fix the systemd unit before first start.
+    # INSTALL_K3S_SKIP_START=true puts the binary and service file in place without
+    # running `systemctl start k3s`, which would hang waiting for `active` state.
+    - name: download and install k3s binary + service files
+      shell: |
+        curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="{{ k3s_version }}" INSTALL_K3S_SKIP_START=true sh -
+      when: not k3s_binary.stat.exists
+
+    # Lightning.ai T4 runs in a container environment where modprobe cannot load
+    # kernel modules from inside (br_netfilter and overlay are already loaded by
+    # the host). The stock k3s service file has these as hard ExecStartPre steps.
+    # This drop-in makes them non-fatal (- prefix) so systemd reaches active state.
+    - name: create k3s systemd drop-in directory
+      file:
+        path: /etc/systemd/system/k3s.service.d
+        state: directory
+        mode: '0755'
+
+    - name: install k3s systemd drop-in (non-fatal modprobe)
+      copy:
+        dest: /etc/systemd/system/k3s.service.d/override.conf
+        content: |
+          [Service]
+          ExecStartPre=
+          ExecStartPre=-/sbin/modprobe br_netfilter
+          ExecStartPre=-/sbin/modprobe overlay
+        mode: '0644'
+      notify: reload systemd and restart k3s
+
+    # T4 is a nested container — overlayfs mounts fail with "invalid argument".
+    # k3s containerd must use the native snapshotter instead.
+    - name: create k3s config directory
+      file:
+        path: /etc/rancher/k3s
+        state: directory
+        mode: '0755'
+
+    - name: write k3s config (native snapshotter for nested container)
+      copy:
+        dest: /etc/rancher/k3s/config.yaml
+        content: |
+          snapshotter: native
+        mode: '0644'
+      notify: reload systemd and restart k3s
+
+    - name: reload systemd daemon
+      systemd:
+        daemon_reload: yes
+
+    - name: stop k3s if running (config change requires restart)
+      systemd:
+        name: k3s
+        state: stopped
+      failed_when: false
+
+    - name: start and enable k3s
+      systemd:
+        name: k3s
+        state: started
+        enabled: yes
+
+    # sudo strips env vars — pass KUBECONFIG explicitly at task level
+    # and use the flag form as a fallback.
+    - name: wait for k3s API server to be ready
+      command: k3s kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get nodes
+      register: k3s_ready
+      retries: 30
+      delay: 10
+      until: k3s_ready.rc == 0
+      changed_when: false
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+    - name: create .kube directory for root
+      file:
+        path: /root/.kube
+        state: directory
+        mode: '0700'
+
+    - name: symlink k3s kubeconfig to default location
+      file:
+        src: /etc/rancher/k3s/k3s.yaml
+        dest: /root/.kube/config
+        state: link
+        force: yes
+
+    - name: export KUBECONFIG system-wide
+      lineinfile:
+        path: /etc/environment
+        regexp: '^KUBECONFIG='
+        line: 'KUBECONFIG=/etc/rancher/k3s/k3s.yaml'
+
+    # ── Helm ──────────────────────────────────────────────────────────────────
+
+    - name: check if Helm is already installed
+      stat:
+        path: /usr/local/bin/helm
+      register: helm_binary
+
+    - name: download Helm tarball
+      get_url:
+        url: "https://get.helm.sh/helm-{{ helm_version }}-linux-amd64.tar.gz"
+        dest: "/tmp/helm-{{ helm_version }}.tar.gz"
+        mode: '0644'
+      when: not helm_binary.stat.exists
+
+    - name: install Helm to /usr/local/bin
+      shell: |
+        tar -xf /tmp/helm-{{ helm_version }}.tar.gz -C /tmp linux-amd64/helm
+        mv /tmp/linux-amd64/helm /usr/local/bin/helm
+        chmod +x /usr/local/bin/helm
+      args:
+        creates: /usr/local/bin/helm
+      when: not helm_binary.stat.exists
+
+    # ── Go ────────────────────────────────────────────────────────────────────
+    # Needed for the custom NVML exporter (M4).
+
+    - name: check if Go is already installed
+      stat:
+        path: /usr/local/go/bin/go
+      register: go_binary
+
+    - name: download Go tarball
+      get_url:
+        url: "https://go.dev/dl/go{{ go_version }}.linux-amd64.tar.gz"
+        dest: "/tmp/go{{ go_version }}.tar.gz"
+        mode: '0644'
+      when: not go_binary.stat.exists
+
+    - name: install Go to /usr/local
+      unarchive:
+        src: "/tmp/go{{ go_version }}.tar.gz"
+        dest: /usr/local
+        remote_src: yes
+      when: not go_binary.stat.exists
+
+    - name: add Go to system PATH
+      lineinfile:
+        path: /etc/environment
+        regexp: '^PATH='
+        line: 'PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/go/bin"'
+
+    # ── Verify ────────────────────────────────────────────────────────────────
+
+    - name: verify k3s node status
+      command: k3s kubectl get nodes -o wide
+      register: k3s_nodes
+      changed_when: false
+
+    - name: show cluster status
+      debug:
+        msg: "{{ k3s_nodes.stdout_lines }}"
+
+    - name: verify Helm version
+      command: helm version --short
+      register: helm_ver
+      changed_when: false
+
+    - name: show Helm version
+      debug:
+        msg: "{{ helm_ver.stdout }}"
+
+  handlers:
+    - name: reload systemd and restart k3s
+      systemd:
+        name: k3s
+        daemon_reload: yes
+        state: restarted

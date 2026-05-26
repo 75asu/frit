@@ -1,0 +1,59 @@
+---
+# kube-prometheus-stack — Prometheus + Grafana + Alertmanager.
+# DCGM metrics flow: GPU Operator dcgm-exporter → Prometheus (via ServiceMonitor) → Grafana.
+# Grafana admin credentials come from Vault via ESO (grafana-externalsecret.yaml).
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: kube-prometheus-stack
+  namespace: monitoring
+spec:
+  interval: 1h
+  chart:
+    spec:
+      chart: kube-prometheus-stack
+      version: "72.*"
+      sourceRef:
+        kind: HelmRepository
+        name: prometheus-community
+        namespace: flux-system
+  values:
+    prometheus:
+      prometheusSpec:
+        # Scrape all ServiceMonitors in all namespaces (picks up dcgm-exporter, vLLM metrics)
+        serviceMonitorSelectorNilUsesHelmValues: false
+        podMonitorSelectorNilUsesHelmValues: false
+        retention: 7d
+        storageSpec:
+          volumeClaimTemplate:
+            spec:
+              storageClassName: local-path
+              resources:
+                requests:
+                  storage: 10Gi
+    grafana:
+      admin:
+        existingSecret: grafana-admin-secret
+        userKey: admin-user
+        passwordKey: admin-password
+      persistence:
+        enabled: true
+        storageClassName: local-path
+        size: 2Gi
+      ingress:
+        enabled: true
+        ingressClassName: traefik
+        hosts:
+          - grafana.frit.local
+    alertmanager:
+      enabled: true
+    # Node exporter for host-level metrics
+    nodeExporter:
+      enabled: true
+    # Compact install — skip unused components
+    kubeEtcd:
+      enabled: false
+    kubeControllerManager:
+      enabled: false
+    kubeScheduler:
+      enabled: false
