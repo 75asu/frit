@@ -14,6 +14,7 @@ metadata:
   namespace: vllm
 spec:
   interval: 1h
+  timeout: 20m
   chart:
     spec:
       chart: vllm-stack
