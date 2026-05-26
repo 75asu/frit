@@ -190,15 +190,19 @@
           --from-literal=password={{ gitea_admin_pass }} \
           --dry-run=client -o yaml | kubectl apply -f -
 
-    - name: apply Flux GitRepository
-      command: kubectl apply -f {{ frit_local_path }}/deploy/k8s/flux/gitrepository.yaml
+    # Apply all Flux objects in one shot — GitRepository + all Kustomizations.
+    # dependsOn in the Kustomization CRDs handles ordering:
+    #   infra-configs dependsOn infra, apps dependsOn infra.
+    - name: apply all Flux objects (GitRepository + Kustomizations)
+      command: kubectl apply -k {{ frit_local_path }}/deploy/k8s/flux
 
-    - name: apply Flux infra Kustomization
-      command: kubectl apply -f {{ frit_local_path }}/deploy/k8s/flux/infra.yaml
+    # Force immediate reconciliation — otherwise Flux waits for the interval timer.
+    - name: trigger Flux to reconcile GitRepository immediately
+      command: flux reconcile source git frit
+      changed_when: false
 
-    - name: apply Flux apps Kustomization
-      command: kubectl apply -f {{ frit_local_path }}/deploy/k8s/flux/apps.yaml
-
+    # Flux now drives everything via dependsOn. We only wait long enough here
+    # to know infra is Ready before initializing Vault (which requires the pod).
     - name: wait for Flux infra Kustomization to be ready
       shell: |
         flux get kustomization infra --no-header 2>/dev/null | grep -q "True"
@@ -213,7 +217,7 @@
     # ═════════════════════════════════════════════════════════════════════════
 
     # Two-step: wait for pod to exist, then wait for it to be Ready.
-    # kubectl wait fails immediately with "no matching resources" if pod doesn't exist yet.
+    # kubectl wait fails with "no matching resources" if the pod doesn't exist yet.
     - name: wait for Vault pod to exist
       shell: kubectl get pod -n vault -l app.kubernetes.io/name=vault --no-headers 2>/dev/null | grep -qv "^$"
       register: vault_pod_exists

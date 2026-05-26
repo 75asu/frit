@@ -11,7 +11,7 @@ resources:
   # ESO — materializes k8s Secrets from Vault paths
   - eso/namespace.yaml
   - eso/helmrelease.yaml
-  - eso/clustersecretstore.yaml
+  # ClusterSecretStore lives in infra-configs (applied after infra so ESO CRDs exist)
   # GPU Operator — device plugin + DCGM exporter + containerd runtime config
   - gpu-operator/namespace.yaml
   - gpu-operator/helmrelease.yaml
