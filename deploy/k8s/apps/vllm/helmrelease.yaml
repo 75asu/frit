@@ -30,6 +30,7 @@ spec:
       requestMemory: "16Gi"
       requestGPU: 1
       model: "microsoft/Phi-3-mini-4k-instruct"
+      mountPvcStorage: false  # we use hostPath below; skip the default PVC (storageClass: "" can't bind)
       extraEnv:
         - name: HF_HUB_CACHE
           value: /models
@@ -52,5 +53,14 @@ spec:
         enabled: true
         className: traefik
         host: vllm.frit.local
+      # Give the router time to survive while the engine loads the model (~2-3 min on T4)
+      startupProbe:
+        initialDelaySeconds: 5
+        periodSeconds: 5
+        failureThreshold: 30   # 155s window to start
+      livenessProbe:
+        initialDelaySeconds: 120  # wait 2min before first liveness check
+        periodSeconds: 5
+        failureThreshold: 60   # then allow 5min of /health failures while engine connects
     serviceMonitor:
       enabled: true  # exposes TTFT, TBT, queue depth, KV cache hit rate to Prometheus
