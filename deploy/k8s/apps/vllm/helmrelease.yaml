@@ -5,8 +5,9 @@
 # Model weights: read from /teamspace/studios/this_studio/models/ (persists across T4 restarts).
 # HF token: pulled from Vault via hf-token ExternalSecret.
 #
-# Tune MODEL_NAME in .env — change it there, re-run make bootstrap to reseed Vault,
-# then update modelURL here and push to Gitea.
+# Chart schema: servingEngineSpec.modelSpec (NOT a top-level "models" key).
+# Omitting pvcStorage prevents PVC creation — use hostPath extraVolumes instead.
+# requestGPUType defaults to nvidia.com/gpu when not set (correct for T4).
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -14,7 +15,7 @@ metadata:
   namespace: vllm
 spec:
   interval: 1h
-  timeout: 20m
+  timeout: 30m
   chart:
     spec:
       chart: vllm-stack
@@ -24,38 +25,42 @@ spec:
         name: vllm
         namespace: flux-system
   values:
-    # Engine deployment — one entry per model in the models array.
-    # name drives service/resource naming: vllm-{name}-engine-service
-    models:
-      - name: phi3
-        enabled: true
-        modelURL: "microsoft/Phi-3-mini-4k-instruct"
-        runtimeClassName: "nvidia"
-        replicaCount: 1
-        requestCPU: "4"
-        requestMemory: "16Gi"
-        requestGPU: 1
-        mountPvcStorage: false  # use hostPath below; skip the default PVC
-        hf_token:
-          secretName: "hf-token"
-          secretKey: "token"
-        extraVolumes:
-          - name: model-cache
-            hostPath:
-              path: /teamspace/studios/this_studio/models
-              type: DirectoryOrCreate
-        extraVolumeMounts:
-          - name: model-cache
-            mountPath: /root/.cache/huggingface/hub  # HF default cache path
-        vllmConfig:
-          v0: "1"
-          maxModelLen: 4096
-          enablePrefixCaching: true
-          dtype: auto
-          gpuMemoryUtilization: 0.9
-          tensorParallelSize: 1
-        lmcacheConfig:
-          enabled: false  # disable LMCache until engine is stable
+    servingEngineSpec:
+      enableEngine: true
+      # Replace the default modelSpec array (which has mistral+PVC) with only phi3.
+      # Helm will delete vllm-mistral-engine-service and vllm-mistral-storage-claim
+      # since they are no longer rendered by this modelSpec.
+      modelSpec:
+        - name: phi3
+          enabled: true
+          modelURL: "microsoft/Phi-3-mini-4k-instruct"
+          runtimeClassName: "nvidia"
+          replicaCount: 1
+          requestCPU: "4"
+          requestMemory: "16Gi"
+          requestGPU: 1
+          # No pvcStorage key — prevents PVC creation.
+          # Model weights live on the hostPath below.
+          hf_token:
+            secretName: "hf-token"
+            secretKey: "token"
+          extraVolumes:
+            - name: model-cache
+              hostPath:
+                path: /teamspace/studios/this_studio/models
+                type: DirectoryOrCreate
+          extraVolumeMounts:
+            - name: model-cache
+              mountPath: /root/.cache/huggingface/hub  # HF default cache path
+          vllmConfig:
+            v0: "1"
+            maxModelLen: 4096
+            enablePrefixCaching: true
+            dtype: auto
+            gpuMemoryUtilization: 0.9
+            tensorParallelSize: 1
+          lmcacheConfig:
+            enabled: false  # disable LMCache until engine is stable
 
     routerSpec:
       replicaCount: 1
