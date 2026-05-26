@@ -309,13 +309,10 @@
 
     - name: create ESO Vault policy (read all secret/data/* paths)
       shell: |
-        kubectl exec -n vault vault-0 -- \
+        printf 'path "secret/data/*" {\n  capabilities = ["read"]\n}\n' | \
+        kubectl exec -i -n vault vault-0 -- \
           env VAULT_TOKEN={{ _vault_root_token }} \
-          vault policy write external-secrets - << 'POLICY'
-        path "secret/data/*" {
-          capabilities = ["read"]
-        }
-        POLICY
+          vault policy write external-secrets -
 
     - name: create ESO Vault Kubernetes auth role
       shell: |
