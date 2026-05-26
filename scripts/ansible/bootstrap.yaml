@@ -199,20 +199,30 @@
     - name: apply Flux apps Kustomization
       command: kubectl apply -f {{ frit_local_path }}/deploy/k8s/flux/apps.yaml
 
-    - name: wait for Flux to reconcile infra (Vault + ESO + GPU Operator deploying)
-      command: >
-        flux wait kustomization infra --timeout=15m
+    - name: wait for Flux infra Kustomization to be ready
+      shell: |
+        flux get kustomization infra --no-header 2>/dev/null | grep -q "True"
       register: flux_infra_wait
-      retries: 2
-      delay: 30
+      retries: 40
+      delay: 15
       until: flux_infra_wait.rc == 0
-      ignore_errors: true
+      changed_when: false
 
     # ═════════════════════════════════════════════════════════════════════════
     # PHASE 4 — Vault initialization + unseal
     # ═════════════════════════════════════════════════════════════════════════
 
-    - name: wait for Vault pod to be Running
+    # Two-step: wait for pod to exist, then wait for it to be Ready.
+    # kubectl wait fails immediately with "no matching resources" if pod doesn't exist yet.
+    - name: wait for Vault pod to exist
+      shell: kubectl get pod -n vault -l app.kubernetes.io/name=vault --no-headers 2>/dev/null | grep -qv "^$"
+      register: vault_pod_exists
+      retries: 40
+      delay: 15
+      until: vault_pod_exists.rc == 0
+      changed_when: false
+
+    - name: wait for Vault pod to be Ready
       command: >
         kubectl wait pod
         --namespace vault
