@@ -10,13 +10,14 @@ A public OSS project that demonstrates AIRE competency by building and operating
 
 **The product stack (what runs):**
 
-| Anthropic Product | Frit Equivalent | Tool |
-|-------------------|----------------|------|
-| Claude.ai (web chat) | Local chat UI | **Open WebUI** |
-| Claude API / Platform | API proxy, routing, rate limiting | **LiteLLM** |
-| Claude model | GPU inference engine | **vLLM** + Qwen2.5-7B or Llama3.1-8B |
-| Claude Code (CLI) | Terminal coding agent | **Aider** or **Hermes** |
-| CPU / secondary backend | Simulated degraded backend | **vLLM CPU-only** |
+| Anthropic Product | Frit Equivalent | Tool | Production basis |
+|-------------------|----------------|------|-----------------|
+| Claude.ai (web chat) | Local chat UI | **Open WebUI** | - |
+| Claude API routing layer | Request routing, prefix-aware dispatch | **vLLM built-in router** | CoreWeave/llm-d pattern |
+| Dev API gateway (multi-model testing) | Local proxy for model switching | **LiteLLM** | Dev tool only — not what frontier labs run in prod |
+| Claude model | GPU inference engine | **vLLM** + Qwen2.5-7B-Instruct | CoreWeave's recommended inference engine |
+| Claude Code (CLI) | Terminal coding agent | **Aider** | - |
+| CPU / secondary backend | Simulated degraded backend | **vLLM CPU-only** | Simulates Anthropic's multi-platform routing |
 
 **The reliability layer (what gets practiced on top):**
 GPU observability, inference SLOs, chaos engineering, load testing, postmortems, and the ops cadence that Staff-level SREs run. Built on a single Lightning.ai Tesla T4, using all free OSS tools. Every milestone ships a real artifact and a blog post.
@@ -139,10 +140,11 @@ curl / Prometheus scrape
 **Goal:** Replace the custom NVML exporter with the industry standard (DCGM), wire it to Prometheus, and build the first Grafana dashboard. This is the stack Anthropic runs at scale. The goal is to understand *why* DCGM exists on top of NVML — what it adds, what it costs, what it catches that NVML misses.
 
 **What gets built:**
-- DCGM + `dcgm-exporter` running in Docker
-- Prometheus scraping `dcgm-exporter` at `:9400`
-- Grafana dashboard: 5 key metrics (gpu_util, mem_used, temperature, power_draw, ecc_errors)
-- Docker Compose: `make up` boots the full observability stack (DCGM + Prometheus + Grafana + Alertmanager)
+- k3s single-node cluster on the T4 (install via Ansible, replaces Docker Compose as the deployment layer)
+- NVIDIA GPU Operator via Helm — installs device plugin + DCGM exporter + container toolkit in one shot (OpenAI/CoreWeave pattern)
+- kube-prometheus-stack via Helm — Prometheus + Grafana + Alertmanager
+- DCGM exporter feeding GPU metrics: gpu_util, mem_used, temperature, power_draw, ecc_errors
+- GPU health CronJob — fires every 5 min on a random node, runs CUDA diagnostic, cordons if unhealthy (OpenAI's active health management pattern)
 - First alert rule: `gpu_util > 90%` for 5 minutes fires to Alertmanager
 
 **Done when:** Grafana dashboard shows live GPU metrics from the T4. Alertmanager fires the gpu_util alert when `make chaos-load` is running.
@@ -158,19 +160,28 @@ curl / Prometheus scrape
 **Goal:** Run a real LLM and observe it end-to-end. This is the workload AIRE monitors. Without a real inference workload, the observability stack has nothing meaningful to watch. TTFT (Time To First Token) is the primary user-facing signal — get it into Grafana.
 
 **What gets built:**
-- vLLM running Qwen2.5-7B-Instruct on the T4 via `--gpus all`, OpenAI-compatible API at `:8000`, Prometheus metrics at `:8001`
-- LiteLLM proxy at `:4000` routing to vLLM, with rate limiting and per-request logging
-- Open WebUI at `:3000` connected to LiteLLM — the claude.ai equivalent, accessible in browser
-- Aider connected to LiteLLM: `aider --openai-api-base http://localhost:4000 --model qwen2.5-7b-instruct`
-- Grafana panel: TTFT p50/p95/p99 + GPU memory_used + LiteLLM request rate visible simultaneously
+- vLLM deployed as a k8s Deployment via vllm-project/production-stack Helm chart
+  - Qwen2.5-7B-Instruct, weights from `/teamspace/studios/this_studio/models/` (persists across restarts)
+  - OpenAI-compatible API at `:8000`, Prometheus metrics at `:8001`
+  - Routing mode: prefix-aware (KV cache hit rate tracked in Grafana — CoreWeave pattern)
+- Open WebUI as a k8s Deployment, exposed via Traefik ingress (built into k3s)
+- LiteLLM as optional dev gateway only — for multi-model switching during M5 simulation
+- Aider connected directly to vLLM: `aider --openai-api-base http://vllm-svc:8000 --model qwen2.5-7b-instruct`
+- Grafana panel: TTFT p50/p95/p99 + GPU memory_used + KV cache hit rate visible simultaneously
 
-**The token path:**
+**The token path (production-equivalent):**
 ```
-Open WebUI / Aider (CLI) → LiteLLM (:4000) → vLLM (:8000) → T4 GPU
-                                  ↓
-                    Prometheus metrics (TTFT, throughput, errors)
-                                  ↓
-                          Grafana dashboard
+Open WebUI / Aider (CLI)
+        │
+    Traefik ingress (k3s built-in)
+        │
+    vLLM k8s Service (:8000)
+        │  prefix-aware routing
+    vLLM Pod → T4 GPU
+        │
+    Prometheus metrics (TTFT, TBT, KV cache hit rate, throughput)
+        │
+    Grafana dashboard
 ```
 
 **Done when:** Open a browser at `localhost:3000`, send a chat message, and see TTFT p99 and GPU memory spike on the same Grafana panel in real time.
@@ -302,13 +313,16 @@ github.com/binarysquadd/frit/
 │   ├── chaos-injector/main.go   — M7: chaos CLI
 │   └── load-tester/main.go      — M6: ramp/soak/spike load patterns
 ├── deploy/
-│   ├── docker-compose.yaml      — boots entire stack (Open WebUI + LiteLLM + vLLM + observability)
-│   ├── litellm/litellm-config.yaml — routing rules, fallback to vllm-cpu
-│   ├── prometheus/
-│   │   ├── prometheus.yml
-│   │   └── rules.yaml           — SLO recording rules, burn rate alerts
+│   ├── k8s/                     — k8s manifests and Helm values (primary deployment method)
+│   │   ├── vllm-values.yaml     — Helm values for vllm-project/production-stack
+│   │   ├── kube-prom-values.yaml — Helm values for kube-prometheus-stack
+│   │   ├── open-webui.yaml      — Deployment + Service + Ingress
+│   │   └── gpu-health-cronjob.yaml — active GPU health check (OpenAI pattern)
+│   ├── helmfile.yaml            — single `helmfile apply` to boot entire stack
+│   ├── litellm/litellm-config.yaml — multi-model routing config (M5 simulation only)
+│   ├── prometheus/rules.yaml    — SLO recording rules, burn rate alerts
 │   ├── grafana/dashboards/
-│   │   └── token-path.json      — SDK → Gateway → LB → Inference → GPU
+│   │   └── token-path.json      — SDK → Traefik → vLLM → GPU + KV cache hit rate
 │   └── loki/loki-config.yaml
 ├── models/.gitignore            — model weights not committed (pulled by vLLM at startup)
 ├── ops-reviews/

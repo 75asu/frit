@@ -1,0 +1,23 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  # HelmRepositories
+  - sources/prometheus-community.yaml
+  - sources/vllm.yaml
+  - sources/open-webui.yaml
+  - sources/langfuse.yaml
+  # Monitoring — Prometheus + Grafana + Alertmanager (kube-prometheus-stack)
+  - monitoring/namespace.yaml
+  - monitoring/helmrelease.yaml
+  - monitoring/grafana-externalsecret.yaml
+  # vLLM — inference engine with prefix-aware routing (production-stack chart)
+  - vllm/namespace.yaml
+  - vllm/helmrelease.yaml
+  - vllm/hf-token-externalsecret.yaml
+  # Open WebUI — Claude.ai equivalent frontend, talks to vLLM via OpenAI API
+  - open-webui/namespace.yaml
+  - open-webui/helmrelease.yaml
+  # Langfuse — LLM-native output quality observability (M5)
+  - langfuse/namespace.yaml
+  - langfuse/helmrelease.yaml
+  - langfuse/externalsecret.yaml

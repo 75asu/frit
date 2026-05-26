@@ -1,0 +1,17 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  # HelmRepositories first — HelmReleases reference them
+  - sources/hashicorp.yaml
+  - sources/external-secrets.yaml
+  - sources/nvidia.yaml
+  # Vault — secrets backend
+  - vault/namespace.yaml
+  - vault/helmrelease.yaml
+  # ESO — materializes k8s Secrets from Vault paths
+  - eso/namespace.yaml
+  - eso/helmrelease.yaml
+  - eso/clustersecretstore.yaml
+  # GPU Operator — device plugin + DCGM exporter + containerd runtime config
+  - gpu-operator/namespace.yaml
+  - gpu-operator/helmrelease.yaml

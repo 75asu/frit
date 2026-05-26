@@ -103,6 +103,9 @@ Each hop produces metrics. Each layer can fail independently. The system mirrors
 | Eval gates in CI | Extend eval-runner to output pass/fail. Block deploys if evals degrade. | Go + CI config | M9 |
 | Per-agent cost meter | Track cost per agent session (tokens, model, vectors) via Langfuse dashboard | Langfuse + cmd/cost-meter | M9 |
 | OTEL traces | Add otel-collector. Go services emit OTEL spans. Langfuse ingests them. | otel-collector (:4317) | M9 |
+| HPC job scheduler | Simple job queue script that dispatches prompts to vllm-gpu/vllm-cpu backends, simulating Slurm-like scheduling | Bash/Go | M10 |
+| Node health check | Script that verifies GPU health (nvidia-smi), NIC status, disk space before scheduling work. Simulates HPC node readiness probes. | Bash/Go | M10 |
+| ADR: Slurm vs K8s | Architecture Decision Record comparing HPC job schedulers to K8s for GPU workloads | Docs | M10 |
 
 ### New Concepts (May 2026 — from AI Platform JD research)
 

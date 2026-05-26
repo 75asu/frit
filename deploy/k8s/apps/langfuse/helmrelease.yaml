@@ -1,0 +1,39 @@
+---
+# Langfuse — LLM output quality observability (M5 milestone).
+# Layer 3 in the frit observability stack:
+#   L1: DCGM (GPU health) → L2: vLLM metrics (engine perf) → L3: Langfuse (output quality)
+# This is the gap Anthropic admitted to in their Sep 2025 postmortem —
+# they lacked "sensitive enough degradation detection benchmarks."
+#
+# Disabled by default (M5). Set suspend: false when M5 milestone starts.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: langfuse
+  namespace: langfuse
+spec:
+  interval: 1h
+  suspend: true
+  chart:
+    spec:
+      chart: langfuse
+      version: "1.*"
+      sourceRef:
+        kind: HelmRepository
+        name: langfuse
+        namespace: flux-system
+  values:
+    langfuse:
+      salt:
+        existingSecret: langfuse-secret
+        existingSecretKey: salt
+      nextAuthSecret:
+        existingSecret: langfuse-secret
+        existingSecretKey: secret_key
+    postgresql:
+      enabled: true
+      auth:
+        existingSecret: langfuse-secret
+        secretKeys:
+          adminPasswordKey: postgres_password
+          userPasswordKey: postgres_password

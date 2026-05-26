@@ -1,0 +1,11 @@
+---
+# frit — full cluster bring-up
+# Runs k3s.yaml then bootstrap.yaml in sequence.
+# Called by: make up
+#
+# Individual playbooks can also be run directly:
+#   make k3s       → k3s.yaml only (first-time cluster install)
+#   make bootstrap → bootstrap.yaml only (Gitea, Flux, Vault, ESO)
+
+- import_playbook: k3s.yaml
+- import_playbook: bootstrap.yaml

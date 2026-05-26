@@ -1,0 +1,16 @@
+---
+# Flux GitRepository — points to in-cluster Gitea.
+# Gitea is installed by bootstrap.yaml before this is applied.
+# The gitea-auth Secret (username + password) is also created by bootstrap.yaml.
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: frit
+  namespace: flux-system
+spec:
+  interval: 1m
+  url: http://gitea-http.gitea.svc.cluster.local:3000/gitea-admin/frit.git
+  ref:
+    branch: main
+  secretRef:
+    name: gitea-auth

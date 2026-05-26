@@ -1,0 +1,31 @@
+---
+# Flux Kustomization — infra layer (wave 0).
+# Deploys: HelmRepositories, Vault, ESO, NVIDIA GPU Operator.
+# Apps Kustomization depends on this — apps wait for infra health checks to pass.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: infra
+  namespace: flux-system
+spec:
+  interval: 10m
+  path: ./deploy/k8s/infra
+  prune: true
+  wait: true
+  timeout: 10m
+  sourceRef:
+    kind: GitRepository
+    name: frit
+  healthChecks:
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: vault
+      namespace: vault
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: external-secrets
+      namespace: external-secrets
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: gpu-operator
+      namespace: gpu-operator

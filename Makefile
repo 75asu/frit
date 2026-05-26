@@ -1,9 +1,21 @@
 -include .env
 export
 
-STUDIO := LIGHTNING_API_KEY=$(LIGHTNING_API_KEY) LIGHTNING_USER_ID=$(LIGHTNING_USER_ID) python3 scripts/studio.py
+STUDIO     := LIGHTNING_API_KEY=$(LIGHTNING_API_KEY) LIGHTNING_USER_ID=$(LIGHTNING_USER_ID) python3 scripts/studio.py
+KUBECONFIG := $(shell pwd)/kubeconfig.yaml
+KUBECTL    := kubectl --kubeconfig=$(KUBECONFIG)
 
-.PHONY: env status start stop sync run keys setup metrics chaos chaos-memory chaos-load clean og-image
+# SSH user changes per studio instance — fetch it once from the SDK.
+# Cached in a make variable so we only call studio.py once per make invocation.
+SSH_USER   := $(shell $(STUDIO) ssh-user 2>/dev/null)
+ANSIBLE    := ansible-playbook \
+              -i "frit," \
+              -e "ansible_user=$(SSH_USER)" \
+              -e "ansible_ssh_private_key_file=$(HOME)/.lightning/lightning_rsa" \
+              -e "ansible_host=ssh.lightning.ai" \
+              --ssh-extra-args="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+
+.PHONY: env status start stop sync run keys k3s bootstrap up wait-ssh setup kubeconfig tunnel tunnel-gitea kubectl metrics chaos chaos-memory chaos-load clean og-image
 
 # -- First-time setup ---------------------------------------------------------
 
@@ -41,16 +53,84 @@ run:
 # -- SSH key setup (once per machine) ----------------------------------------
 # Downloads ~/.lightning/lightning_rsa, writes "Host frit" into ~/.ssh/config,
 # and smoke-tests the SSH connection.
-# Run this once on any new machine before make setup.
+# Run this once on any new machine before anything else.
 keys:
 	set -a && source .env && set +a && ansible-playbook -c local scripts/ansible/local.yml
 
-# -- Studio provisioning ------------------------------------------------------
-# Installs Go, DCGM, nvidia-container-toolkit on the studio.
-# Idempotent -- safe to re-run after every studio restart.
-# Requires: make keys (run once per machine first)
+# -- Cluster provisioning -----------------------------------------------------
+# k3s: install k3s + Helm + Go on the T4. Idempotent.
+# bootstrap: install Gitea + Flux + Vault + ESO, push code to Gitea, seed secrets.
+# up: full bring-up from a blank T4 (start + k3s + bootstrap).
+#
+# Normal first-run flow:
+#   make env      # create .env from .env.example, fill in credentials
+#   make keys     # one-time SSH setup
+#   make up       # brings up the full cluster
+
+k3s:
+	$(ANSIBLE) scripts/ansible/k3s.yaml
+
+bootstrap:
+	$(ANSIBLE) scripts/ansible/bootstrap.yaml
+
+up: start wait-ssh k3s bootstrap
+	@echo "Cluster is up. Access via: make tunnel (then make kubectl CMD='get pods -A')"
+
+# Wait for SSH and apt to both be ready.
+# Studio takes ~60s to accept SSH, then another ~2min for its own apt-get update to finish.
+wait-ssh:
+	@echo "Waiting for studio SSH to be ready..."
+	@until ssh -o ConnectTimeout=5 -o BatchMode=yes frit true 2>/dev/null; do \
+		echo "  ...SSH not ready yet, retrying in 10s"; \
+		sleep 10; \
+	done
+	@echo "SSH ready. Waiting for studio apt-get to finish..."
+	@until ssh -o BatchMode=yes frit "! pgrep -x apt-get > /dev/null && ! pgrep -x dpkg > /dev/null" 2>/dev/null; do \
+		echo "  ...apt still running, retrying in 15s"; \
+		sleep 15; \
+	done
+	@echo "Studio is fully ready."
+
+# -- Legacy: bare prerequisites (kept for backward compat) --------------------
 setup:
-	ansible-playbook -i frit, scripts/ansible/setup.yml
+	$(ANSIBLE) scripts/ansible/setup.yml
+
+# -- Local cluster access -----------------------------------------------------
+# kubeconfig.yaml is fetched from the T4 automatically at the end of `make bootstrap`.
+# Run these targets on the Mac to get local kubectl access.
+
+# Fetch kubeconfig from T4 without running full bootstrap.
+# kubeconfig server is 127.0.0.1:6443 — needs make tunnel to reach it.
+kubeconfig:
+	ansible -i "frit," all \
+		-e "ansible_user=$(SSH_USER)" \
+		-e "ansible_ssh_private_key_file=$(HOME)/.lightning/lightning_rsa" \
+		-e "ansible_host=ssh.lightning.ai" \
+		--ssh-extra-args="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
+		-m fetch \
+		-a "src=/etc/rancher/k3s/k3s.yaml dest=$(shell pwd)/kubeconfig.yaml flat=yes mode=0600" \
+		--become
+	@echo "kubeconfig.yaml written. Run: make tunnel"
+
+# SSH port-forward — exposes k3s API locally.
+# Keep this running in a separate terminal while using kubectl.
+# ctrl-c to stop.
+tunnel:
+	@echo "Forwarding 127.0.0.1:6443 → T4 k3s API. Keep this terminal open."
+	@echo "In another terminal: make kubectl CMD='get pods -A'"
+	ssh -N -L 6443:127.0.0.1:6443 frit
+
+# SSH port-forward for Gitea (NodePort 30080).
+tunnel-gitea:
+	@echo "Forwarding 127.0.0.1:30080 → T4 Gitea. Keep this terminal open."
+	ssh -N -L 30080:127.0.0.1:30080 frit
+
+# kubectl from Mac using the fetched kubeconfig (requires make tunnel in another terminal).
+# Usage: make kubectl CMD="get pods -A"
+#        make kubectl CMD="get helmreleases -A"
+#        make kubectl CMD="logs -n vault vault-0"
+kubectl:
+	$(KUBECTL) $(CMD)
 
 # -- GPU checks ---------------------------------------------------------------
 

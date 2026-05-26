@@ -1,0 +1,11 @@
+---
+# vLLM production-stack — CoreWeave's reference inference deployment pattern.
+# Chart: github.com/vllm-project/production-stack
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: vllm
+  namespace: flux-system
+spec:
+  interval: 24h
+  url: https://vllm-project.github.io/production-stack

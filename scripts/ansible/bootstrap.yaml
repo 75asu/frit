@@ -1,0 +1,403 @@
+---
+# frit — GitOps + secrets bootstrap
+#
+# Installs and configures:
+#   Gitea (in-cluster Git, NodePort 30080)
+#   Flux (watching Gitea, deploying infra + apps layers)
+#   Vault (secrets backend, single-node Raft)
+#   ESO (ExternalSecret Operator, pulls secrets from Vault into k8s Secrets)
+#
+# Run via site.yaml or directly:
+#   make bootstrap
+#
+# Idempotent — all tasks check current state before acting.
+# On every `make up`, Vault is re-initialized and re-seeded from .env.
+# The T4 is ephemeral — local-path PVCs reset on studio restart.
+# .env on the Mac is the source of truth for all secrets.
+
+- name: frit GitOps bootstrap
+  hosts: all
+  become: true
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+    PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+  vars:
+    gitea_admin_user:  "{{ lookup('env', 'GITEA_ADMIN_USER')     | default('gitea-admin') }}"
+    gitea_admin_pass:  "{{ lookup('env', 'GITEA_ADMIN_PASSWORD')  | default('changeme') }}"
+    gitea_admin_email: "{{ lookup('env', 'GITEA_ADMIN_EMAIL')     | default('admin@frit.local') }}"
+    gitea_nodeport:    "{{ lookup('env', 'GITEA_NODEPORT')        | default('30080') }}"
+    vault_unseal_key:  "{{ lookup('env', 'VAULT_UNSEAL_KEY')      | default('') }}"
+    vault_root_token:  "{{ lookup('env', 'VAULT_ROOT_TOKEN')      | default('') }}"
+    hf_token:          "{{ lookup('env', 'HF_TOKEN')              | default('') }}"
+    grafana_user:      "{{ lookup('env', 'GRAFANA_ADMIN_USER')    | default('admin') }}"
+    grafana_pass:      "{{ lookup('env', 'GRAFANA_ADMIN_PASSWORD') | default('changeme') }}"
+    langfuse_key:      "{{ lookup('env', 'LANGFUSE_SECRET_KEY')   | default('changeme') }}"
+    langfuse_salt:     "{{ lookup('env', 'LANGFUSE_SALT')         | default('changeme') }}"
+    langfuse_pg_pass:  "{{ lookup('env', 'LANGFUSE_POSTGRES_PASSWORD') | default('changeme') }}"
+    frit_repo_url:     "https://github.com/75asu/frit.git"
+    frit_local_path:   "/opt/frit"
+    flux_version:      "v2.5.1"
+
+  tasks:
+
+    # ═════════════════════════════════════════════════════════════════════════
+    # PHASE 1 — Gitea
+    # ═════════════════════════════════════════════════════════════════════════
+
+    - name: add Gitea Helm repo
+      command: helm repo add gitea-charts https://dl.gitea.com/charts/
+      changed_when: false
+
+    - name: update Helm repos
+      command: helm repo update
+      changed_when: false
+
+    - name: install Gitea (NodePort {{ gitea_nodeport }}, sqlite3)
+      command: >
+        helm upgrade --install gitea gitea-charts/gitea
+        --namespace gitea --create-namespace
+        --set service.http.type=NodePort
+        --set service.http.nodePort={{ gitea_nodeport }}
+        --set gitea.admin.username={{ gitea_admin_user }}
+        --set gitea.admin.password={{ gitea_admin_pass }}
+        --set gitea.admin.email={{ gitea_admin_email }}
+        --set gitea.config.database.DB_TYPE=sqlite3
+        --set postgresql-ha.enabled=false
+        --set postgresql.enabled=false
+        --set persistence.size=10Gi
+        --wait --timeout=5m
+      changed_when: true
+
+    - name: wait for Gitea to be ready
+      uri:
+        url: "http://localhost:{{ gitea_nodeport }}/api/v1/version"
+        method: GET
+        status_code: 200
+      register: gitea_health
+      retries: 18
+      delay: 10
+      until: gitea_health.status == 200
+
+    - name: create frit repository in Gitea
+      uri:
+        url: "http://localhost:{{ gitea_nodeport }}/api/v1/user/repos"
+        method: POST
+        headers:
+          Content-Type: "application/json"
+          Authorization: "Basic {{ (gitea_admin_user + ':' + gitea_admin_pass) | b64encode }}"
+        body_format: json
+        body:
+          name: frit
+          description: "AI Reliability Engineering — inference stack lab"
+          private: false
+          auto_init: false
+        status_code: [201, 409]
+      register: gitea_repo_create
+
+    # ═════════════════════════════════════════════════════════════════════════
+    # PHASE 2 — Push frit code to Gitea
+    # ═════════════════════════════════════════════════════════════════════════
+
+    - name: install git
+      apt:
+        name: git
+        state: present
+        update_cache: no
+
+    - name: clone frit from GitHub
+      git:
+        repo: "{{ frit_repo_url }}"
+        dest: "{{ frit_local_path }}"
+        update: yes
+        force: yes
+
+    - name: configure git user for push
+      git_config:
+        name: "{{ item.name }}"
+        value: "{{ item.value }}"
+        scope: global
+      loop:
+        - { name: user.email, value: "{{ gitea_admin_email }}" }
+        - { name: user.name,  value: "frit-bootstrap" }
+
+    - name: check if gitea remote already exists
+      command: git remote get-url gitea
+      args:
+        chdir: "{{ frit_local_path }}"
+      register: gitea_remote_check
+      ignore_errors: true
+      changed_when: false
+
+    - name: add Gitea remote
+      command: >
+        git remote add gitea
+        http://{{ gitea_admin_user }}:{{ gitea_admin_pass }}@localhost:{{ gitea_nodeport }}/{{ gitea_admin_user }}/frit.git
+      args:
+        chdir: "{{ frit_local_path }}"
+      when: gitea_remote_check.rc != 0
+
+    - name: update Gitea remote URL (if already exists)
+      command: >
+        git remote set-url gitea
+        http://{{ gitea_admin_user }}:{{ gitea_admin_pass }}@localhost:{{ gitea_nodeport }}/{{ gitea_admin_user }}/frit.git
+      args:
+        chdir: "{{ frit_local_path }}"
+      when: gitea_remote_check.rc == 0
+
+    - name: push frit to Gitea
+      command: git push --force gitea main
+      args:
+        chdir: "{{ frit_local_path }}"
+      environment:
+        GIT_TERMINAL_PROMPT: "0"
+      changed_when: true
+
+    # ═════════════════════════════════════════════════════════════════════════
+    # PHASE 3 — Flux
+    # ═════════════════════════════════════════════════════════════════════════
+
+    - name: check if flux CLI is installed
+      stat:
+        path: /usr/local/bin/flux
+      register: flux_binary
+
+    - name: download flux CLI {{ flux_version }}
+      get_url:
+        url: "https://github.com/fluxcd/flux2/releases/download/{{ flux_version }}/flux_{{ flux_version[1:] }}_linux_amd64.tar.gz"
+        dest: "/tmp/flux.tar.gz"
+        mode: '0644'
+      when: not flux_binary.stat.exists
+
+    - name: install flux CLI
+      unarchive:
+        src: /tmp/flux.tar.gz
+        dest: /usr/local/bin
+        remote_src: yes
+        extra_opts: ["--strip-components=0"]
+      when: not flux_binary.stat.exists
+
+    - name: install Flux controllers into cluster
+      command: flux install --kubeconfig /etc/rancher/k3s/k3s.yaml
+      register: flux_install
+      changed_when: "'already installed' not in flux_install.stderr"
+
+    - name: create gitea-auth Secret for Flux GitRepository
+      shell: |
+        kubectl create secret generic gitea-auth \
+          --namespace flux-system \
+          --from-literal=username={{ gitea_admin_user }} \
+          --from-literal=password={{ gitea_admin_pass }} \
+          --dry-run=client -o yaml | kubectl apply -f -
+
+    - name: apply Flux GitRepository
+      command: kubectl apply -f {{ frit_local_path }}/deploy/k8s/flux/gitrepository.yaml
+
+    - name: apply Flux infra Kustomization
+      command: kubectl apply -f {{ frit_local_path }}/deploy/k8s/flux/infra.yaml
+
+    - name: apply Flux apps Kustomization
+      command: kubectl apply -f {{ frit_local_path }}/deploy/k8s/flux/apps.yaml
+
+    - name: wait for Flux to reconcile infra (Vault + ESO + GPU Operator deploying)
+      command: >
+        flux wait kustomization infra --timeout=15m
+      register: flux_infra_wait
+      retries: 2
+      delay: 30
+      until: flux_infra_wait.rc == 0
+      ignore_errors: true
+
+    # ═════════════════════════════════════════════════════════════════════════
+    # PHASE 4 — Vault initialization + unseal
+    # ═════════════════════════════════════════════════════════════════════════
+
+    - name: wait for Vault pod to be Running
+      command: >
+        kubectl wait pod
+        --namespace vault
+        --selector app.kubernetes.io/name=vault
+        --for condition=Ready
+        --timeout=300s
+
+    - name: check if Vault is already initialized
+      shell: |
+        kubectl exec -n vault vault-0 -- \
+          vault status -format=json 2>/dev/null \
+          | python3 -c "import json,sys; print(json.load(sys.stdin).get('initialized', False))"
+      register: vault_initialized_check
+      changed_when: false
+      ignore_errors: true
+
+    - name: initialize Vault (1 key share, 1 threshold)
+      shell: |
+        kubectl exec -n vault vault-0 -- \
+          vault operator init -key-shares=1 -key-threshold=1 -format=json
+      register: vault_init_out
+      when: vault_initialized_check.stdout | trim != 'True'
+
+    - name: parse Vault init output
+      set_fact:
+        _vault_unseal_key: "{{ (vault_init_out.stdout | from_json).unseal_keys_b64[0] }}"
+        _vault_root_token: "{{ (vault_init_out.stdout | from_json).root_token }}"
+      when: vault_init_out is changed
+
+    - name: use existing Vault credentials from env
+      set_fact:
+        _vault_unseal_key: "{{ vault_unseal_key }}"
+        _vault_root_token: "{{ vault_root_token }}"
+      when: vault_init_out is not changed
+
+    - name: save Vault credentials back to local .env
+      delegate_to: localhost
+      become: false
+      lineinfile:
+        path: "{{ playbook_dir }}/../../.env"
+        regexp: "^{{ item.key }}="
+        line: "{{ item.key }}={{ item.value }}"
+      loop:
+        - { key: VAULT_UNSEAL_KEY, value: "{{ _vault_unseal_key }}" }
+        - { key: VAULT_ROOT_TOKEN, value: "{{ _vault_root_token }}" }
+      when: vault_init_out is changed
+
+    - name: print Vault credentials (save these to .env if not already there)
+      debug:
+        msg:
+          - "VAULT_UNSEAL_KEY={{ _vault_unseal_key }}"
+          - "VAULT_ROOT_TOKEN={{ _vault_root_token }}"
+      when: vault_init_out is changed
+
+    - name: unseal Vault
+      shell: |
+        kubectl exec -n vault vault-0 -- vault operator unseal {{ _vault_unseal_key }}
+
+    # ═════════════════════════════════════════════════════════════════════════
+    # PHASE 5 — Vault configuration (KV, K8s auth, ESO policy + role)
+    # ═════════════════════════════════════════════════════════════════════════
+
+    - name: enable KV v2 secrets engine at path 'secret/'
+      shell: |
+        kubectl exec -n vault vault-0 -- \
+          env VAULT_TOKEN={{ _vault_root_token }} \
+          vault secrets enable -path=secret kv-v2
+      ignore_errors: true  # errors if already enabled
+
+    - name: enable Kubernetes auth method
+      shell: |
+        kubectl exec -n vault vault-0 -- \
+          env VAULT_TOKEN={{ _vault_root_token }} \
+          vault auth enable kubernetes
+      ignore_errors: true  # errors if already enabled
+
+    - name: get Kubernetes API server ClusterIP
+      command: kubectl get svc kubernetes -o jsonpath='{.spec.clusterIP}'
+      register: kube_api_ip
+      changed_when: false
+
+    - name: configure Vault Kubernetes auth
+      shell: |
+        kubectl exec -n vault vault-0 -- \
+          env VAULT_TOKEN={{ _vault_root_token }} \
+          vault write auth/kubernetes/config \
+            kubernetes_host="https://{{ kube_api_ip.stdout }}:443"
+
+    - name: create ESO Vault policy (read all secret/data/* paths)
+      shell: |
+        kubectl exec -n vault vault-0 -- \
+          env VAULT_TOKEN={{ _vault_root_token }} \
+          vault policy write external-secrets - << 'POLICY'
+        path "secret/data/*" {
+          capabilities = ["read"]
+        }
+        POLICY
+
+    - name: create ESO Vault Kubernetes auth role
+      shell: |
+        kubectl exec -n vault vault-0 -- \
+          env VAULT_TOKEN={{ _vault_root_token }} \
+          vault write auth/kubernetes/role/external-secrets \
+            bound_service_account_names=external-secrets \
+            bound_service_account_namespaces=external-secrets \
+            policies=external-secrets \
+            ttl=24h
+
+    # ═════════════════════════════════════════════════════════════════════════
+    # PHASE 6 — Seed secrets into Vault
+    # ═════════════════════════════════════════════════════════════════════════
+
+    - name: seed Grafana credentials
+      shell: |
+        kubectl exec -n vault vault-0 -- \
+          env VAULT_TOKEN={{ _vault_root_token }} \
+          vault kv put secret/grafana \
+            admin_user="{{ grafana_user }}" \
+            admin_password="{{ grafana_pass }}"
+
+    - name: seed HuggingFace token
+      shell: |
+        kubectl exec -n vault vault-0 -- \
+          env VAULT_TOKEN={{ _vault_root_token }} \
+          vault kv put secret/hf \
+            token="{{ hf_token }}"
+
+    - name: seed Langfuse credentials (M5)
+      shell: |
+        kubectl exec -n vault vault-0 -- \
+          env VAULT_TOKEN={{ _vault_root_token }} \
+          vault kv put secret/langfuse \
+            secret_key="{{ langfuse_key }}" \
+            salt="{{ langfuse_salt }}" \
+            postgres_password="{{ langfuse_pg_pass }}"
+
+    # ═════════════════════════════════════════════════════════════════════════
+    # PHASE 7 — Verify
+    # ═════════════════════════════════════════════════════════════════════════
+
+    - name: show all running pods
+      command: kubectl get pods -A
+      register: all_pods
+      changed_when: false
+
+    - name: cluster summary
+      debug:
+        msg: "{{ all_pods.stdout_lines }}"
+
+    - name: show Flux status
+      command: flux get all -A
+      register: flux_status
+      changed_when: false
+      ignore_errors: true
+
+    - name: flux status
+      debug:
+        msg: "{{ flux_status.stdout_lines }}"
+
+    # ═════════════════════════════════════════════════════════════════════════
+    # PHASE 8 — Fetch kubeconfig to local Mac
+    # ═════════════════════════════════════════════════════════════════════════
+    # k3s kubeconfig has server: https://127.0.0.1:6443
+    # The Mac reaches it via SSH tunnel (make tunnel binds local 6443 → T4 6443).
+    # After this fetch, `make tunnel` then `kubectl get pods -A` works from Mac.
+
+    - name: fetch k3s kubeconfig to local Mac
+      fetch:
+        src: /etc/rancher/k3s/k3s.yaml
+        dest: "{{ playbook_dir }}/../../kubeconfig.yaml"
+        flat: yes
+        mode: '0600'
+
+    - name: bootstrap complete
+      debug:
+        msg:
+          - "=== frit cluster is up ==="
+          - ""
+          - "kubeconfig.yaml written to repo root — run these on your Mac:"
+          - "  make tunnel          # SSH port-forward 6443→k3s (keep running)"
+          - "  make kubectl CMD='get pods -A'   # kubectl from Mac"
+          - ""
+          - "Gitea:     http://localhost:{{ gitea_nodeport }} (make tunnel-gitea)"
+          - "Grafana:   http://grafana.frit.local (after adding /etc/hosts entry)"
+          - "WebUI:     http://webui.frit.local"
+          - "vLLM:      http://vllm.frit.local/v1"
+          - ""
+          - "Next: make run CMD='flux get all -A'"
