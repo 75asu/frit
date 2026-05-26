@@ -34,6 +34,8 @@ spec:
         - name: phi3
           enabled: true
           modelURL: "microsoft/Phi-3-mini-4k-instruct"
+          repository: "lmcache/vllm-openai"
+          tag: "latest"
           runtimeClassName: "nvidia"
           replicaCount: 1
           requestCPU: "4"
