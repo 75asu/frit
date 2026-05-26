@@ -1,12 +1,12 @@
 ---
 # vLLM production-stack — the CoreWeave/CNCF reference inference deployment.
 # Router: prefix-aware routing (routes to node holding matching KV cache prefix).
-# Worker: single T4 (16GB), Llama-3-8B.
+# Engine: single T4 (16GB), Phi-3-mini-4k-instruct.
 # Model weights: read from /teamspace/studios/this_studio/models/ (persists across T4 restarts).
 # HF token: pulled from Vault via hf-token ExternalSecret.
 #
 # Tune MODEL_NAME in .env — change it there, re-run make bootstrap to reseed Vault,
-# then update this HelmRelease value and push to Gitea.
+# then update modelURL here and push to Gitea.
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -24,28 +24,39 @@ spec:
         name: vllm
         namespace: flux-system
   values:
-    servingEngineSpec:
-      replicaCount: 1
-      requestCPU: "4"
-      requestMemory: "16Gi"
-      requestGPU: 1
-      model: "microsoft/Phi-3-mini-4k-instruct"
-      mountPvcStorage: false  # we use hostPath below; skip the default PVC (storageClass: "" can't bind)
-      extraEnv:
-        - name: HF_HUB_CACHE
-          value: /models
-      vllmConfig:
-        maxModelLen: 8192
-        enablePrefixCaching: true  # KV-cache prefix sharing — the llm-d routing pattern
-        dtype: auto
-      volumeMounts:
-        - name: model-cache
-          mountPath: /models
-      volumes:
-        - name: model-cache
-          hostPath:
-            path: /teamspace/studios/this_studio/models
-            type: DirectoryOrCreate
+    # Engine deployment — one entry per model in the models array.
+    # name drives service/resource naming: vllm-{name}-engine-service
+    models:
+      - name: phi3
+        enabled: true
+        modelURL: "microsoft/Phi-3-mini-4k-instruct"
+        runtimeClassName: "nvidia"
+        replicaCount: 1
+        requestCPU: "4"
+        requestMemory: "16Gi"
+        requestGPU: 1
+        mountPvcStorage: false  # use hostPath below; skip the default PVC
+        hf_token:
+          secretName: "hf-token"
+          secretKey: "token"
+        extraVolumes:
+          - name: model-cache
+            hostPath:
+              path: /teamspace/studios/this_studio/models
+              type: DirectoryOrCreate
+        extraVolumeMounts:
+          - name: model-cache
+            mountPath: /root/.cache/huggingface/hub  # HF default cache path
+        vllmConfig:
+          v0: "1"
+          maxModelLen: 4096
+          enablePrefixCaching: true
+          dtype: auto
+          gpuMemoryUtilization: 0.9
+          tensorParallelSize: 1
+        lmcacheConfig:
+          enabled: false  # disable LMCache until engine is stable
+
     routerSpec:
       replicaCount: 1
       routing: "prefix"  # prefix-aware routing (CoreWeave pattern)
@@ -62,5 +73,6 @@ spec:
         initialDelaySeconds: 120  # wait 2min before first liveness check
         periodSeconds: 5
         failureThreshold: 60   # then allow 5min of /health failures while engine connects
+
     serviceMonitor:
       enabled: true  # exposes TTFT, TBT, queue depth, KV cache hit rate to Prometheus
