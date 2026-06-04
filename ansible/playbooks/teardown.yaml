@@ -23,6 +23,7 @@
       ansible.builtin.apt:
         name:
           - cuda-drivers
+          - cuda-keyring          # purge the keyring too, else its repo .list is not re-added on next gpu run
           - nvidia-container-toolkit
           - datacenter-gpu-manager
           - docker-ce

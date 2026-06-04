@@ -26,6 +26,8 @@ down: ## stop the VM -- billing stops; disk + cluster persist
 	@bin/vm.sh stop
 teardown: inventory ## 100->0: wipe cluster + GPU stack back to bare Ubuntu (no residue)
 	@ansible-playbook ansible/playbooks/teardown.yaml
+	@# Vault tokens are bound to the destroyed cluster -- clear them so the next up re-inits cleanly.
+	@[ -f .env ] && sed -i '' -E 's/^(VAULT_UNSEAL_KEY|VAULT_ROOT_TOKEN)=.*/\1=/' .env && echo "cleared stale Vault tokens from .env" || true
 ssh: ## open a shell on the VM
 	@bin/vm.sh ssh
 status: ## VM status + current external IP

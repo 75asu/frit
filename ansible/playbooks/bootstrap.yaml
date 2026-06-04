@@ -227,40 +227,50 @@
       until: vault_running.rc == 0
       changed_when: false
 
-    - name: check if Vault is already initialized
+    # Wait until the Vault API actually answers with a clean initialized true/false.
+    # `vault status` exits non-zero when sealed (rc=2), so we key off parseable
+    # output, not the exit code -- and we wait for it to be definitively one or
+    # the other before deciding to init.
+    - name: wait for Vault to report a clean init status
       shell: |
-        kubectl exec -n vault vault-0 -- \
-          vault status -format=json 2>/dev/null \
-          | python3 -c "import json,sys; print(json.load(sys.stdin).get('initialized', False))"
+        kubectl exec -n vault vault-0 -- vault status -format=json 2>/dev/null \
+          | python3 -c "import json,sys; print(json.load(sys.stdin)['initialized'])"
       register: vault_initialized_check
       changed_when: false
-      ignore_errors: true
-      retries: 6
+      retries: 18
       delay: 10
-      until: vault_initialized_check.rc == 0
+      until: vault_initialized_check.rc == 0 and (vault_initialized_check.stdout | trim) in ['True', 'False']
 
-    - name: initialize Vault (1 key share, 1 threshold)
+    - name: initialize Vault (1 key share, 1 threshold) -- only when definitively uninitialized
       shell: |
         kubectl exec -n vault vault-0 -- \
           vault operator init -key-shares=1 -key-threshold=1 -format=json
       register: vault_init_out
-      # Only init when check succeeded (rc=0) and returned False — not when check itself failed
-      when: vault_initialized_check.rc == 0 and vault_initialized_check.stdout | trim != 'True'
-      retries: 3
-      delay: 10
-      until: vault_init_out.rc == 0
+      when: (vault_initialized_check.stdout | trim) == 'False'
+      changed_when: true
 
-    - name: parse Vault init output
+    - name: assert init produced credentials (clear failure, not an empty from_json)
+      ansible.builtin.assert:
+        that: (vault_init_out.stdout | default('') | trim | length) > 0
+        fail_msg: "vault operator init returned no output -- Vault is in a bad state. Run `make teardown` then `make up`."
+      when: vault_init_out is changed
+
+    - name: parse Vault init output (fresh init)
       set_fact:
         _vault_unseal_key: "{{ (vault_init_out.stdout | from_json).unseal_keys_b64[0] }}"
         _vault_root_token: "{{ (vault_init_out.stdout | from_json).root_token }}"
       when: vault_init_out is changed
 
-    - name: use existing Vault credentials from env
+    - name: use existing Vault credentials from env (already-initialized re-run)
       set_fact:
         _vault_unseal_key: "{{ vault_unseal_key }}"
         _vault_root_token: "{{ vault_root_token }}"
-      # Use env creds when: init was skipped (already initialized) OR status check failed (assume initialized)
+      when: vault_init_out is not changed
+
+    - name: assert we have credentials when Vault was already initialized
+      ansible.builtin.assert:
+        that: (_vault_root_token | default('') | length) > 0
+        fail_msg: "Vault is already initialized but no root token in .env. Run `make teardown` then `make up` for a clean Vault."
       when: vault_init_out is not changed
 
     - name: save Vault credentials back to local .env
