@@ -3,3 +3,5 @@ models/
 .env
 vendor/
 kubeconfig.yaml
+ansible/inventory/hosts.yaml
+*.retry

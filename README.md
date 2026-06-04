@@ -1,6 +1,6 @@
 # frit
 
-GPU reliability engineering at homelab scale. One Tesla T4. The full inference stack: vLLM, LiteLLM, Open WebUI, DCGM. Real SLOs, chaos experiments, postmortems. One GPU practicing patterns that hold at 1000.
+GPU reliability engineering at homelab scale. One GPU VM. The full inference stack: vLLM, LiteLLM, Open WebUI, DCGM. Real SLOs, chaos experiments, postmortems. One GPU practicing patterns that hold at 1000.
 
 **Status:** M0 in progress — [75asu.github.io/frit](https://75asu.github.io/frit)
 
@@ -8,13 +8,13 @@ GPU reliability engineering at homelab scale. One Tesla T4. The full inference s
 
 ## What This Is
 
-A public OSS project that demonstrates production-grade GPU reliability engineering on a single Lightning.ai T4. Every milestone ships a real artifact and a blog post.
+A public OSS project that demonstrates production-grade GPU reliability engineering on a single NVIDIA GPU VM. Every milestone ships a real artifact and a blog post.
 
 | Anthropic Stack | Frit Equivalent |
 |-----------------|----------------|
 | Claude.ai | Open WebUI |
 | Claude API | LiteLLM proxy |
-| Claude model | vLLM + Qwen2.5-7B on T4 |
+| Claude model | vLLM + Qwen2.5-7B on a T4 |
 | Observability | DCGM + Prometheus + Grafana |
 
 ---
@@ -23,7 +23,7 @@ A public OSS project that demonstrates production-grade GPU reliability engineer
 
 | # | Name | Status |
 |---|------|--------|
-| M0 | GPU Foundation — Tesla T4, DCGM, Docker GPU passthrough | **in progress** |
+| M0 | GPU Foundation — driver, DCGM, Docker GPU passthrough, k3s | **in progress** |
 | M1 | GPU Metrics Exporter — NVML → Prometheus, custom Go binary | queued |
 | M2 | DCGM + Observability Stack — Grafana dashboards, Alertmanager rules | queued |
 | M3 | Inference Layer + Token Path — vLLM + LiteLLM + Open WebUI, TTFT dashboard | queued |
@@ -37,74 +37,69 @@ A public OSS project that demonstrates production-grade GPU reliability engineer
 
 ## Quick Start
 
+Bring any **NVIDIA GPU VM** (a GCP Spot T4 is the reference; any Ubuntu host with a GPU works). The base layer goes from a bare VM to a running, observable inference stack — and `make teardown` wipes it back to bare, no residue.
+
 ### Prerequisites
 
-- [Lightning.ai](https://lightning.ai) account with a T4 studio created
-- Python 3.x + `pip install lightning_sdk`
+- Your machine: `ansible`, `gcloud` (for the GCP-VM path), and an SSH key.
+- A GPU VM you can SSH to with sudo. On GCP: an `n1-*` instance with `--accelerator nvidia-tesla-t4` (the driver is installed for you by `make gpu`).
+- No secrets touch git — the `.env` and rendered inventory are gitignored.
 
-### 1. Clone and configure
+### 1. Configure
 
 ```bash
-git clone https://github.com/binarysquadd/frit.git && cd frit
-make env   # copies .env.example → .env, then fill in your credentials
+git clone https://github.com/75asu/frit.git && cd frit
+cp .env.example .env       # fill in GCP_PROJECT/ZONE/VM_NAME + TARGET_USER/SSH_KEY_PATH + secrets
 ```
 
-Edit `.env` with your values:
-
-| Variable | Where to find it |
-|----------|-----------------|
-| `LIGHTNING_API_KEY` | Lightning.ai → profile icon → Keys → API key |
-| `LIGHTNING_USER_ID` | Same page, shown next to the API key |
-| `STUDIO_TEAMSPACE` | The teamspace name in your Lightning.ai URL |
-| `STUDIO_USER` | Your Lightning.ai username |
-| `STUDIO_NAME` | Name of your studio (default: `frit`) |
-
-### 2. Download SSH keys (once per machine)
+### 2. Bring it up (0 → 100)
 
 ```bash
-make keys      # downloads ~/.lightning/lightning_rsa, writes Host frit into ~/.ssh/config
+make connect    # start the VM, resolve its live IP, preflight (SSH + sudo + GPU present)
+make gpu        # NVIDIA driver + nvidia-container-toolkit + DCGM + Docker (reboots once to load the driver)
+make cluster    # k3s + Helm + Go, then Gitea + Flux + Vault + ESO -> Flux applies gitops/
+# or just: make up   (connect + gpu + k3s + bootstrap in one shot)
 ```
 
-Idempotent — safe to re-run. The studio does not need to be running for this step.
-
-### 3. Start the studio and verify
+### 3. Use it
 
 ```bash
-make start     # boots the T4 (takes ~2-3 min to fully initialize)
-make status    # should print: Running
-make metrics   # should print live GPU stats from the T4
+make metrics                    # live GPU stats over SSH
+make tunnel                     # forward the k3s API (keep open), then:
+make kubectl CMD="get pods -A"  # talk to the cluster from your Mac
+make chaos-memory               # fill GPU VRAM and observe
 ```
 
-### 4. Provision the studio
+### 4. Stop / wipe
 
 ```bash
-make setup     # installs Go, DCGM, nvidia-container-toolkit via Ansible over SSH
-```
-
-If setup fails immediately, the preflight checks will tell you exactly why:
-- `No GPU detected` — studio started on CPU, run `make stop && make start`
-- `apt is locked` — T4 still initializing, wait 2 min and retry
-
-### Available commands
-
-```bash
-make metrics        # live GPU stats (temp, power, VRAM, utilization)
-make run CMD="..."  # run any command on the studio remotely
-make sync           # push local code changes to the studio
-make chaos-memory   # fill GPU VRAM and observe degradation
-make chaos-load     # run competing GPU workloads
-make clean          # kill all chaos containers
+make down       # stop the VM — billing stops, disk + cluster persist (make up restores it)
+make teardown   # 100 -> 0: remove k3s + GPU stack back to bare Ubuntu, no residue
 ```
 
 ---
 
+## Layout
+
+```
+.env.example          VM coords + secrets (copy to .env — gitignored)
+bin/                  vm.sh (VM lifecycle) · render-inventory.sh (live-IP inventory)
+ansible/
+  ansible.cfg         tuned SSH multiplexing / forks / accept-new host keys
+  inventory/          hosts.yaml (generated, gitignored)
+  playbooks/          preflight · gpu · k3s · bootstrap · site · teardown
+  roles/              (future: gpu/k3s extracted into roles)
+gitops/               the lab, applied by Flux: gpu-operator, vLLM, monitoring, langfuse...
+Makefile              one command per step
+```
+
 ## Stack
 
-- **GPU** — Tesla T4, 16GB VRAM, CUDA 13.0
+- **GPU** — NVIDIA T4 (16 GB VRAM); any NVIDIA GPU works
 - **Inference** — vLLM, LiteLLM, Open WebUI
 - **Observability** — DCGM, Prometheus, Grafana, Alertmanager, Loki
-- **Custom tooling** — Go NVML exporter, chaos injector CLI, load tester
-- **Platform** — Lightning.ai (free tier T4)
+- **Custom tooling** — Go NVML exporter, chaos injector, load tester
+- **Platform** — k3s + Flux (GitOps) on a single GPU VM
 
 ---
 

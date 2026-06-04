@@ -12,8 +12,9 @@
 #
 # Idempotent — all tasks check current state before acting.
 # On every `make up`, Vault is re-initialized and re-seeded from .env.
-# The T4 is ephemeral — local-path PVCs reset on studio restart.
-# .env on the Mac is the source of truth for all secrets.
+# The VM's disk persists across stop/start, so local-path PVCs survive a reboot;
+# they only reset on `make teardown`. .env on the Mac is the source of truth for
+# all secrets.
 
 - name: frit GitOps bootstrap
   hosts: all
@@ -194,7 +195,7 @@
     # dependsOn in the Kustomization CRDs handles ordering:
     #   infra-configs dependsOn infra, apps dependsOn infra.
     - name: apply all Flux objects (GitRepository + Kustomizations)
-      command: kubectl apply -k {{ frit_local_path }}/deploy/k8s/flux
+      command: kubectl apply -k {{ frit_local_path }}/gitops/flux
 
     # Force immediate reconciliation — otherwise Flux waits for the interval timer.
     - name: trigger Flux to reconcile GitRepository immediately

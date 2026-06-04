@@ -1,0 +1,70 @@
+---
+# Preflight: prove we can manage the target AND that it actually has an NVIDIA
+# GPU, before any real play. Order: SSH -> shell -> Python -> sudo -> GPU present.
+# The GPU check reads the PCI vendor id from sysfs (0x10de = NVIDIA) so it works
+# with NO driver installed and NO pciutils -- the driver itself is `make gpu`'s job.
+#   Run via: make connect
+- name: Preflight (connectivity + GPU presence)
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: SSH reachable (no Python required)
+      ansible.builtin.wait_for_connection:
+        timeout: 30
+
+    - name: Shell works over SSH
+      ansible.builtin.raw: echo connected
+      changed_when: false
+
+    - name: Python interpreter usable
+      block:
+        - name: ping
+          ansible.builtin.ping:
+      rescue:
+        - name: Python missing
+          ansible.builtin.fail:
+            msg: >-
+              SSH works but Ansible cannot find a usable Python on the target.
+              Install python3 (Ubuntu: apt-get install -y python3) and re-run.
+
+    - name: Privilege escalation (sudo) works
+      become: true
+      block:
+        - name: whoami as root
+          ansible.builtin.command: id -un
+          register: become_who
+          changed_when: false
+      rescue:
+        - name: become failed
+          ansible.builtin.fail:
+            msg: >-
+              Connected, but 'become' (sudo) failed. Set BECOME_PASS in .env, or
+              enable passwordless sudo for this user on the target.
+
+    - name: NVIDIA GPU hardware present (PCI vendor 0x10de via sysfs)
+      become: true
+      block:
+        - name: scan PCI vendor ids for NVIDIA
+          ansible.builtin.shell: "grep -ilx '0x10de' /sys/bus/pci/devices/*/vendor"
+          register: nvidia_pci
+          changed_when: false
+      rescue:
+        - name: no NVIDIA GPU on this host
+          ansible.builtin.fail:
+            msg: >-
+              No NVIDIA GPU found on this host (no PCI device with vendor 0x10de).
+              frit needs a GPU machine. On GCP, attach a GPU (e.g. --accelerator
+              nvidia-tesla-t4) or point TARGET_HOST at a GPU box.
+
+    - name: driver state (informational -- `make gpu` installs it if absent)
+      become: true
+      ansible.builtin.command: nvidia-smi --query-gpu=name --format=csv,noheader
+      register: smi
+      changed_when: false
+      failed_when: false
+
+    - name: Preflight OK
+      ansible.builtin.debug:
+        msg: >-
+          OK  sudo={{ become_who.stdout }}  GPU-PCI={{ nvidia_pci.stdout_lines | length }} device(s);
+          driver={{ 'ready (' ~ smi.stdout_lines[0] ~ ')' if smi.rc == 0 else 'NOT installed -- run make gpu' }}

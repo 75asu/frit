@@ -1,0 +1,135 @@
+---
+# frit -- k3s single-node cluster install (GPU VM).
+#
+# Installs k3s + Helm + Go. The NVIDIA GPU Operator (deployed via Flux from
+# gitops/) handles the k8s device plugin + containerd runtime; the *host* GPU
+# driver + nvidia-container-toolkit are installed earlier by `make gpu`.
+#
+# Idempotent. Run via site.yaml or:  make cluster
+- name: frit k3s cluster
+  hosts: all
+  become: true
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+    PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/go/bin"
+
+  vars:
+    go_version: "1.22.4"
+    k3s_version: "v1.32.4+k3s1"
+    helm_version: "v3.17.3"
+
+  pre_tasks:
+    - name: check the NVIDIA driver is ready (make gpu installs it first)
+      ansible.builtin.command: nvidia-smi -L
+      register: smi
+      changed_when: false
+      failed_when: false
+
+    - name: fail fast if no working GPU driver
+      ansible.builtin.assert:
+        that: smi.rc == 0
+        fail_msg: "nvidia-smi failed -- install the GPU foundation first:  make gpu"
+
+  tasks:
+    # -- k3s (single-node; default overlayfs snapshotter; built-in Traefik) -----
+    - name: is k3s already installed?
+      ansible.builtin.stat:
+        path: /usr/local/bin/k3s
+      register: k3s_binary
+
+    - name: install k3s (pinned version, installs + starts + enables)
+      ansible.builtin.shell: |
+        curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="{{ k3s_version }}" sh -
+      args:
+        creates: /usr/local/bin/k3s
+      when: not k3s_binary.stat.exists
+
+    - name: ensure k3s is enabled and started
+      ansible.builtin.systemd:
+        name: k3s
+        state: started
+        enabled: true
+
+    - name: wait for the k3s API server
+      ansible.builtin.command: k3s kubectl get nodes
+      register: k3s_ready
+      retries: 30
+      delay: 10
+      until: k3s_ready.rc == 0
+      changed_when: false
+
+    - name: root .kube dir
+      ansible.builtin.file:
+        path: /root/.kube
+        state: directory
+        mode: "0700"
+
+    - name: symlink kubeconfig to the default location
+      ansible.builtin.file:
+        src: /etc/rancher/k3s/k3s.yaml
+        dest: /root/.kube/config
+        state: link
+        force: true
+
+    - name: export KUBECONFIG system-wide
+      ansible.builtin.lineinfile:
+        path: /etc/environment
+        regexp: '^KUBECONFIG='
+        line: 'KUBECONFIG=/etc/rancher/k3s/k3s.yaml'
+
+    # -- Helm -------------------------------------------------------------------
+    - name: is Helm installed?
+      ansible.builtin.stat:
+        path: /usr/local/bin/helm
+      register: helm_binary
+
+    - name: download Helm
+      ansible.builtin.get_url:
+        url: "https://get.helm.sh/helm-{{ helm_version }}-linux-amd64.tar.gz"
+        dest: "/tmp/helm-{{ helm_version }}.tar.gz"
+        mode: "0644"
+      when: not helm_binary.stat.exists
+
+    - name: install Helm to /usr/local/bin
+      ansible.builtin.shell: |
+        tar -xf /tmp/helm-{{ helm_version }}.tar.gz -C /tmp linux-amd64/helm
+        mv /tmp/linux-amd64/helm /usr/local/bin/helm && chmod +x /usr/local/bin/helm
+      args:
+        creates: /usr/local/bin/helm
+      when: not helm_binary.stat.exists
+
+    # -- Go (for the custom NVML exporter, M1) ----------------------------------
+    - name: is Go installed?
+      ansible.builtin.stat:
+        path: /usr/local/go/bin/go
+      register: go_binary
+
+    - name: download Go
+      ansible.builtin.get_url:
+        url: "https://go.dev/dl/go{{ go_version }}.linux-amd64.tar.gz"
+        dest: "/tmp/go{{ go_version }}.tar.gz"
+        mode: "0644"
+      when: not go_binary.stat.exists
+
+    - name: install Go to /usr/local
+      ansible.builtin.unarchive:
+        src: "/tmp/go{{ go_version }}.tar.gz"
+        dest: /usr/local
+        remote_src: true
+      when: not go_binary.stat.exists
+
+    - name: add Go to system PATH
+      ansible.builtin.lineinfile:
+        path: /etc/environment
+        regexp: '^PATH='
+        line: 'PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/go/bin"'
+
+    # -- Verify -----------------------------------------------------------------
+    - name: cluster node status
+      ansible.builtin.command: k3s kubectl get nodes -o wide
+      register: nodes
+      changed_when: false
+
+    - name: show cluster + helm
+      ansible.builtin.debug:
+        msg: "{{ nodes.stdout_lines }}"

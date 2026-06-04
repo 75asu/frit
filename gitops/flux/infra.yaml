@@ -9,7 +9,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
-  path: ./deploy/k8s/infra
+  path: ./gitops/infra
   prune: true
   wait: true
   timeout: 10m

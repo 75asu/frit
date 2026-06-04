@@ -10,7 +10,7 @@ spec:
   dependsOn:
     - name: infra
   interval: 10m
-  path: ./deploy/k8s/infra-configs
+  path: ./gitops/infra-configs
   prune: true
   sourceRef:
     kind: GitRepository

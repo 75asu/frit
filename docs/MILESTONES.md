@@ -71,11 +71,21 @@ Related: [Kiln](https://github.com/binarysquadd/kiln) — the isolation platform
 | M1 | GPU Metrics Exporter | NOT STARTED | Go binary (NVML → Prometheus) | "building a gpu metrics exporter in go" |
 | M2 | DCGM + Observability Stack | NOT STARTED | Grafana dashboard, Docker Compose | "dcgm vs nvml: what changes" |
 | M3 | Inference Layer + Token Path | NOT STARTED | vLLM + LiteLLM + Open WebUI + TTFT dashboard | "measuring ttft on a t4" |
+| M3.5 | Distributed Tracing (token path) | NOT STARTED | OTEL Collector + Tempo, trace/metric/log correlation | "tracing the llm token path" |
 | M4 | SLOs + Alerting | NOT STARTED | SLO.md, Alertmanager rules, error budget | "designing slos for inference workloads" |
 | M5 | Multi-Platform Simulation | NOT STARTED | 3 gateways, canary config, equivalence checker | "how anthropic's routing layer works" |
+| M5.5 | Eval & Safety Gate | NOT STARTED | eval suite, canary promotion gate | "the eval gate anthropic wished they'd had" |
+| M5.6 | Safeguard Model Serving | NOT STARTED | guard model, stricter SLO, fail-safe policy | "serving a safety model" |
 | M6 | Load Testing | NOT STARTED | k6 scripts, breaking point documented | "load testing an llm serving stack" |
-| M7 | Chaos + Postmortems | NOT STARTED | chaos-injector CLI, 5 experiments, 3 postmortems | one article per experiment |
+| M6.5 | HA & Failover (simulated multi-region) | NOT STARTED | active-passive failover, measured RTO | "failover for llm serving" |
+| M7 | Chaos + Postmortems | NOT STARTED | chaos-injector CLI, 5+ experiments, 3 postmortems | one article per experiment |
 | M8 | Cadence + OSS Contributions | ONGOING (starts M3) | 12 ops reviews, 2 merged OSS PRs | monthly summary post |
+| M9 | Multi-GPU Burst (ephemeral) | NOT STARTED | 2× A100 NVLink, tensor-parallel vLLM, NCCL, MIG | "real multi-gpu on a budget" |
+| M10 | TPU Burst (ephemeral) | NOT STARTED | JAX/XLA inference on a TPU VM | "a gpu sre's first day on a tpu" |
+| M11 | Firmware & Driver Compatibility Ops | NOT STARTED | driver/firmware matrix, staged rollout + rollback | "firmware ops for sres" |
+| M12 | Cost & Capacity Model | NOT STARTED | per-token cost meter, fleet TCO model | "what does a million tokens cost" |
+
+> M3.5 / M5.5 / M5.6 / M6.5 are inserts at their logical position in the existing sequence (decimal-numbered so M0-M8 IDs and the four-session plan stay stable). M9-M12 are advanced extensions; M9-M10 are ephemeral hardware bursts (spin up on Spot, capture one artifact, tear down). All four advanced ones were added from the AIRE gap analysis -- see each section's "Why (AIRE)" note.
 
 ---
 
@@ -190,6 +200,28 @@ Open WebUI / Aider (CLI)
 
 ---
 
+## M3.5: Distributed Tracing Across the Token Path
+
+**Status:** NOT STARTED
+**Placement:** right after M3 (a token path now exists) and feeds M4. Metrics tell you *something* is slow; traces tell you *where*.
+
+**Goal:** Implement the literal AIRE mandate -- observability across "every hop from the SDK through our network, API layers, serving infrastructure, and accelerators and back." Add distributed tracing so a single slow request can be followed hop by hop and correlated with its metrics and logs.
+
+**What gets built:**
+- OpenTelemetry Collector in the k3s cluster
+- Instrument the gateway (LiteLLM / Open WebUI ingress) and vLLM to emit OTLP spans; one span per hop: ingress -> router -> vLLM queue -> GPU execution -> response
+- Tempo (Grafana stack) as the trace backend
+- Grafana correlation: TTFT histogram exemplars link to example traces; click a slow trace -> jump to its Loki logs (the `ops-log` / `debug-log` streams from M4)
+- A `token-path` trace view that visually mirrors the M3 ASCII token path
+
+**Done when:** a deliberately slow request in Open WebUI shows a full span waterfall in Tempo, and from the TTFT panel you can pivot panel -> trace -> logs for that exact request ID.
+
+**Content:** dev.to article -- "tracing the llm token path: where the milliseconds actually go."
+
+**Why (AIRE):** JD -- "design and implement monitoring and observability systems across the token path." Metrics + logs (M2-M4) without traces leave the "which hop" question unanswered.
+
+---
+
 ## M4: SLOs + Alerting
 
 **Status:** NOT STARTED
@@ -228,6 +260,48 @@ Open WebUI / Aider (CLI)
 
 ---
 
+## M5.5: Eval & Safety Gate (Regression Detection)
+
+**Status:** NOT STARTED
+**Placement:** right after M5 -- promotes the M5 equivalence checker into a continuous, blocking gate.
+
+**Goal:** Build the exact thing Anthropic's September 2025 postmortem says they lacked: *"detection took weeks because [we] lacked sensitive enough evaluations,"* and *"canary deployment didn't catch the issues because evaluations weren't sensitive enough."* Make eval failures block a bad canary automatically.
+
+**What gets built:**
+- An eval suite run against every canary backend: benchmark prompts + output-quality checks -- length distribution, language-consistency (catches the "Thai characters in English responses" class of bug), format validity, refusal-rate drift
+- Golden-output diffing vs the primary backend (extends `cmd/eval-runner/main.go` from M5)
+- A promotion **gate**: a canary is blocked from taking more traffic if eval scores regress beyond a threshold (wired into the M8 cadence / CI)
+- Grafana: eval pass-rate per backend over time; alert when a backend's score regresses
+
+**Done when:** re-run the M5 bad-config canary -- the eval gate now flags the quality regression and blocks promotion automatically, instead of you just eyeballing TTFT divergence.
+
+**Content:** dev.to article -- "the eval gate anthropic wished they'd had: catching output corruption before users do."
+
+**Why (AIRE):** the postmortem's central failure was insensitive evals + canary that didn't catch a quality regression. This is the single most AIRE-specific reliability control in the project.
+
+---
+
+## M5.6: Safeguard Model Serving (Safety-Critical Path)
+
+**Status:** NOT STARTED
+**Placement:** after M5.5 -- a second, safety-critical serving path with its own SLO.
+
+**Goal:** Serve a guard/moderation model as a separate path with a *stricter* SLO than the model it protects. Straight from the JD: *"Support the reliability of safeguard model serving -- critical for both site reliability and Anthropic's safety commitments."*
+
+**What gets built:**
+- A second vLLM serving a small guard model (Llama-Guard-class or a lightweight classifier), behind LiteLLM as a pre/post filter on requests
+- A dedicated SLO for the guard path with a higher availability target than the main model, plus an explicit **fail-closed vs fail-open** policy (a safety path must not silently fail open)
+- Chaos tie-in: kill the guard model and verify the system enforces the defined fail-safe behavior and pages
+- Grafana: guard-path availability + decision latency tracked separately from the main model
+
+**Done when:** requests traverse the guard model; killing it triggers the defined fail-safe behavior and an alert; the guard-path SLO is tracked independently.
+
+**Content:** dev.to article -- "serving a safety model: why the guard path needs a stricter slo than the model it guards."
+
+**Why (AIRE):** safeguard serving is named explicitly in the JD and ties reliability to Anthropic's safety commitments -- a differentiator no generic observability project has.
+
+---
+
 ## M6: Load Testing
 
 **Status:** NOT STARTED
@@ -246,6 +320,27 @@ Open WebUI / Aider (CLI)
 
 ---
 
+## M6.5: HA & Failover (Simulated Multi-Region)
+
+**Status:** NOT STARTED
+**Placement:** after M6 (you now know capacity), before M7 -- failover is a controlled precursor to full chaos.
+
+**Goal:** Simulate the JD line *"assist in design and implementation of high-availability serving infrastructure across multiple regions and cloud providers,"* and reconstruct the blast-radius lesson from the postmortem (sticky routing amplified a misroute across follow-up requests).
+
+**What gets built:**
+- Two vLLM backends labelled `region-a` (primary) and `region-b` (standby) -- the "multi-region" stand-in
+- LiteLLM health-check-based **automatic failover**: primary dies -> traffic cuts over to standby
+- Measure and document **RTO** (time-to-recover) and the count of requests dropped during cutover
+- Sticky-session handling: ensure failover does not strand sticky sessions on the dead backend (the exact amplification Anthropic hit on Aug 5-16)
+
+**Done when:** kill the primary mid-load; traffic fails over to standby; you have a measured RTO number and a dropped-request count, and sticky sessions re-home cleanly.
+
+**Content:** dev.to article -- "failover for llm serving: measuring rto when the primary gpu backend dies."
+
+**Why (AIRE):** multi-region HA serving (JD) + the sticky-routing blast-radius failure mode from the September 2025 postmortem.
+
+---
+
 ## M7: Chaos + Postmortems
 
 **Status:** NOT STARTED
@@ -260,8 +355,10 @@ Open WebUI / Aider (CLI)
   chaos inject --type slow-gpu --delay-ms 500    # inject latency into GPU kernel calls
   chaos inject --type bad-model        # serve a corrupted model file
   chaos inject --type sdk-timeout --timeout-ms 50  # force client timeouts
+  chaos inject --type misroute --context-pool wrong  # route long-context reqs to the short-context pool
   chaos recover --all
   ```
+- The `misroute` experiment reconstructs Anthropic's Aug 5-16 incident: send 1M-context-style requests to a backend configured for short context, then show that **sticky routing amplifies the blast radius** (the same session keeps hitting the wrong pool). Requires the M6.5 two-backend + sticky setup. This is the highest-fidelity reconstruction of a real frontier-lab incident in the project.
 - Minimum 5 experiments in `chaos-experiments/NNN-name.md`, each with: hypothesis, method, observation, SLO impact, conclusion
 - Minimum 3 blameless postmortems in `postmortems/` with: impact statement, timeline, root cause (the 5 whys), action items, what would have detected it faster
 - Bar: Alertmanager fires before you manually notice the degradation
@@ -296,6 +393,92 @@ Open WebUI / Aider (CLI)
 **Done when:** 12 weekly ops reviews written (3 months of cadence) + 2 merged OSS PRs in GPU infrastructure projects.
 
 **Content:** Monthly summary post — "N months of gpu sre practice: what I learned operating a homelab llm stack."
+
+---
+
+## M9: Multi-GPU Burst -- Real NVLink + Tensor Parallelism (ephemeral)
+
+**Status:** NOT STARTED -- optional, ephemeral hardware burst.
+**Placement:** any time after M3. Spin up, capture one artifact, tear down. Turns "I simulated multi-GPU" into "I ran real tensor parallelism + NVLink NCCL" -- the single biggest "Strong Candidates" gap closed with one afternoon of work.
+
+**What gets built (provision -> capture -> delete):**
+- `a2-highgpu-2g` (2x A100 40GB, real NVLink) on Spot, a few hours
+- vLLM with `tensor-parallel-size=2` across both GPUs; measure throughput / TTFT vs single-GPU
+- `nccl-tests` all-reduce micro-benchmark -- capture bus bandwidth, observe NVLink vs PCIe paths (`nvidia-smi topo -m`)
+- **MIG partitioning** demo (A100 supports MIG; the L4 does not) -- split one A100 into instances and schedule them via the k8s device plugin
+- Write-up: topology, NCCL bandwidth, tensor-parallel scaling curve -> one ADR + blog, then `gcloud compute instances delete`
+
+**Done when:** tensor-parallel vLLM serves across 2x A100, NCCL bandwidth is captured, MIG instances are scheduled, results are written up, and the instance is deleted.
+
+**Cost / quota:** ~$2-3/hr Spot; a 3-4 hr run ≈ $10-20. A100 quota in the project is likely 0 and needs an increase request first. Confirm Fravity credits cover GPU SKUs.
+
+**Content:** dev.to article -- "real multi-gpu on a budget: nvlink, tensor parallelism, and nccl in an afternoon."
+
+**Why (AIRE):** Full-Scope list -- MIG partitioning, NCCL tuning, topology-aware scheduling, cross-node GPU comms. The L4 single-GPU home cannot show any of these.
+
+---
+
+## M10: TPU Burst -- JAX/XLA, Anthropic's Actual Stack (ephemeral)
+
+**Status:** NOT STARTED -- optional, ephemeral.
+**Placement:** any time after M3. Separate hardware from the GPU box.
+
+**Goal:** Touch the accelerator and compiler Anthropic actually runs in production. Their September 2025 incident included an **XLA:TPU miscompilation** -- this burst is the closest you can get to that problem space.
+
+**What gets built (provision -> capture -> delete):**
+- A small TPU VM (`v5e-1` or `v5e-8`) on GCP, a few hours
+- Run a JAX/XLA inference on a small model; inspect XLA compilation (dump HLO), note AOT-compile vs CUDA mental model
+- Document how an XLA miscompilation would manifest as garbled output (the "Thai-in-English" class), and what an SRE signal for it looks like
+- GPU-vs-TPU comparison note; delete the TPU VM
+
+**Done when:** a JAX model runs on the TPU VM, you've inspected the XLA HLO, and the GPU-vs-TPU comparison is written; VM deleted.
+
+**Cost / quota:** ~$1-10/hr depending on size; TPU quota is separate and likely needs a request.
+
+**Content:** dev.to article -- "a gpu sre's first day on a tpu: xla, jax, and why anthropic's compiler bug happened."
+
+**Why (AIRE):** multi-accelerator (TPU) from the "Strong Candidates" list; Anthropic explicitly serves on TPUs via XLA, and the postmortem's root cause lived here.
+
+---
+
+## M11: Firmware & Driver Compatibility Ops
+
+**Status:** NOT STARTED -- buildable on the single L4 VM.
+**Placement:** after M2 (GPU operator exists). Operational firmware discipline, **not** firmware development.
+
+**Goal:** Own firmware/driver reliability the way an SRE does -- versions, compatibility matrices, staged rollouts -- the OpenAI Frontier Systems "firmware management (operations)" domain, adjacent to AIRE.
+
+**What gets built:**
+- Track VBIOS + driver versions (`nvidia-smi -q`) as Prometheus labels; a small inventory table spanning this node (and any M9 burst nodes)
+- A driver/firmware **compatibility matrix** doc sourced from NVIDIA release notes (e.g. "driver X + GPU firmware Y = known ECC spike under FP8")
+- Simulate a **staged driver rollout** on the node: cordon -> drain -> upgrade driver via the GPU Operator -> DCGM health diag -> uncordon, with a documented rollback path
+- ADR: how a firmware bug manifests as an SRE incident (GPU hang, PCIe error, silent corruption) and the detection signal
+
+**Done when:** driver/VBIOS version is a tracked metric, a staged driver upgrade + rollback is documented, and the compatibility-matrix doc exists.
+
+**Content:** dev.to article -- "firmware ops for sres: tracking driver/firmware compatibility without a soldering iron."
+
+**Why (AIRE):** OpenAI Frontier JD "firmware management"; AIRE.md flags this as adjacent literacy worth being able to talk to in an interview.
+
+---
+
+## M12: Cost & Capacity Model (FinOps for Inference)
+
+**Status:** NOT STARTED -- Layer 5.
+**Placement:** after M4 (you have SLOs) and M6 (you have throughput numbers). Fills `docs/cost-model.md`, already referenced in the repo structure.
+
+**Goal:** Make inference cost a first-class, observable signal, and extrapolate the homelab numbers to fleet economics -- the "cost-efficient" half of the AIRE Full-Scope mandate.
+
+**What gets built:**
+- Per-request/token cost meter: LiteLLM token counts x GPU $/hr / measured throughput -> live `$ / 1M tokens`, exported to Prometheus and shown in Grafana
+- `docs/cost-model.md`: extrapolate measured L4 (and M9 A100) throughput + $/hr to TCO at 100 and 1000 GPUs; compare on-demand vs Spot vs committed-use
+- The metric that matters to a platform team: **cost per SLO-compliant million tokens** (ties M4 SLO to spend)
+
+**Done when:** Grafana shows live `$/1M tokens` for the running stack, and `cost-model.md` projects fleet-scale TCO with assumptions stated.
+
+**Content:** dev.to article -- "what does a million claude-equivalent tokens cost? a homelab-to-fleet tco model."
+
+**Why (AIRE):** Layer 5 cost meters; Full Scope -- "ensure GPU workloads are reliable, schedulable, and cost-efficient."
 
 ---
 
@@ -350,8 +533,16 @@ github.com/binarysquadd/frit/
 | M1 | "building a gpu metrics exporter in go: what the docs don't tell you" | When M1 is done |
 | M2 | "dcgm vs nvml: what changes when you move to the industry standard" | When M2 is done |
 | M3 | "measuring ttft on a t4: what first-token latency actually tells you" | When M3 is done |
+| M3.5 | "tracing the llm token path: where the milliseconds actually go" | When M3.5 is done |
 | M4 | "designing slos for inference workloads: what's different from web services" | When M4 is done |
 | M5 | "how anthropic's routing layer works: a homelab reconstruction" | When M5 is done |
+| M5.5 | "the eval gate anthropic wished they'd had: catching output corruption before users do" | When M5.5 is done |
+| M5.6 | "serving a safety model: why the guard path needs a stricter slo" | When M5.6 is done |
 | M6 | "load testing an llm serving stack: the numbers that actually matter" | When M6 is done |
+| M6.5 | "failover for llm serving: measuring rto when the primary gpu backend dies" | When M6.5 is done |
 | M7 | "chaos experiment #N: [what broke and what the alert showed]" | After each experiment |
 | M8 | "N months of gpu sre practice: what I learned" | Monthly |
+| M9 | "real multi-gpu on a budget: nvlink, tensor parallelism, and nccl in an afternoon" | After the burst |
+| M10 | "a gpu sre's first day on a tpu: xla, jax, and why anthropic's compiler bug happened" | After the burst |
+| M11 | "firmware ops for sres: tracking driver/firmware compatibility without a soldering iron" | When M11 is done |
+| M12 | "what does a million claude-equivalent tokens cost? a homelab-to-fleet tco model" | When M12 is done |

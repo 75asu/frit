@@ -1,0 +1,62 @@
+---
+# frit -- wipe the GPU lab back to bare Ubuntu (100 -> 0). Idempotent; safe to
+# run even if nothing is installed. The driver fully unloads on the next reboot
+# (or VM stop/start), which `make down` does anyway.
+#   make teardown
+- name: Wipe frit (cluster + GPU stack) to bare Ubuntu
+  hosts: all
+  become: true
+  tasks:
+    - name: uninstall k3s (its uninstaller removes the cluster + embedded containerd)
+      ansible.builtin.command: /usr/local/bin/k3s-uninstall.sh
+      args:
+        removes: /usr/local/bin/k3s-uninstall.sh
+
+    - name: stop DCGM + Docker before purge
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        state: stopped
+      loop: [nvidia-dcgm, docker]
+      failed_when: false
+
+    - name: purge GPU + container packages (autoremove cascades the driver libs)
+      ansible.builtin.apt:
+        name:
+          - cuda-drivers
+          - nvidia-container-toolkit
+          - datacenter-gpu-manager
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+        state: absent
+        purge: true
+        autoremove: true
+      failed_when: false
+
+    - name: remove CUDA apt sources (name varies by OS) + nvidia keyring
+      ansible.builtin.shell: >-
+        rm -f /etc/apt/sources.list.d/cuda-*.list /etc/apt/sources.list.d/cuda.list
+        /usr/share/keyrings/cuda-archive-keyring.gpg
+      changed_when: false
+
+    - name: remove repos, keyrings, Go, Helm, cloned repo, kube state (no residue)
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/apt/sources.list.d/nvidia-container-toolkit.list
+        - /etc/apt/sources.list.d/docker.list
+        - /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+        - /etc/apt/keyrings/docker.gpg
+        - /usr/local/go
+        - /usr/local/bin/helm
+        - /opt/frit
+        - /root/.kube
+        - /etc/rancher
+
+    - name: refresh apt cache after repo removal
+      ansible.builtin.apt:
+        update_cache: true
+
+    - ansible.builtin.debug:
+        msg: "frit wiped -- bare Ubuntu again. Reboot (or make down/up) to fully unload the GPU driver."

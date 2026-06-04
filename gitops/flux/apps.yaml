@@ -13,7 +13,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
-  path: ./deploy/k8s/apps
+  path: ./gitops/apps
   prune: true
   sourceRef:
     kind: GitRepository

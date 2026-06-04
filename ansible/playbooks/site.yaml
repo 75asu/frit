@@ -1,0 +1,13 @@
+---
+# frit -- full cluster bring-up (0 -> 100).
+# Runs gpu.yaml -> k3s.yaml -> bootstrap.yaml in sequence.
+# Called by: make cluster (after make connect)
+#
+# Individual playbooks can also be run directly:
+#   make gpu        -> gpu.yaml only (NVIDIA driver + toolkit + DCGM + Docker)
+#   make k3s        -> k3s.yaml only (k3s + Helm + Go)
+#   make bootstrap  -> bootstrap.yaml only (Gitea, Flux, Vault, ESO)
+
+- import_playbook: gpu.yaml
+- import_playbook: k3s.yaml
+- import_playbook: bootstrap.yaml
