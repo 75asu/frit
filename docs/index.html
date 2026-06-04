@@ -272,6 +272,9 @@
     }
     .badge-active { color: var(--acc); border-color: var(--acc-mid); background: var(--acc-dim); }
     .badge-q      { color: var(--text3); border-color: var(--text3); opacity: 0.5; }
+    .badge-done   { color: #7ec699; border-color: rgba(126,198,153,0.45); }
+    .ms-done .ms-num  { color: #7ec699; }
+    .ms-done .ms-name { color: var(--hi); font-weight: 500; }
 
     .cursor {
       display: inline-block;
@@ -359,11 +362,11 @@
       <div class="section-lbl">milestones</div>
       <div class="ms-list">
 
-        <div class="ms ms-active">
+        <div class="ms ms-done">
           <span class="ms-num">M0</span>
           <span class="ms-name">GPU Foundation</span>
-          <span class="ms-badge badge-active">in progress<span class="cursor"></span></span>
-          <span class="ms-sub">Tesla T4, DCGM, Docker GPU passthrough</span>
+          <span class="ms-badge badge-done">shipped</span>
+          <span class="ms-sub">driver &middot; DCGM &middot; k3s &middot; GPU-in-k8s &middot; vLLM on the T4 -- bare VM &rarr; stack &rarr; bare, one command</span>
         </div>
 
         <div class="ms">
