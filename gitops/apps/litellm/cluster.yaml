@@ -1,0 +1,20 @@
+---
+# CloudNativePG Postgres cluster backing the LiteLLM proxy (virtual keys, spend, logs).
+# CNPG auto-creates:
+#   - service  litellm-db-rw   (read-write endpoint)
+#   - secret   litellm-db-app  (keys: username, password, dbname, host, port, uri ...)
+# The litellm chart's db.secret expects exactly `username`/`password` keys -> drops right in.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: litellm-db
+  namespace: litellm
+spec:
+  instances: 1
+  storage:
+    size: 2Gi
+    storageClass: local-path
+  bootstrap:
+    initdb:
+      database: litellm
+      owner: litellm

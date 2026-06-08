@@ -1,6 +1,6 @@
 ---
 # Open WebUI — self-hosted Claude.ai equivalent.
-# Connects to vLLM router via the OpenAI-compatible /v1 API.
+# Connects to the LiteLLM gateway (OpenAI-compatible /v1); LiteLLM routes to the vLLM router.
 # Accessible at http://webui.frit.local via Traefik ingress.
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
@@ -22,8 +22,8 @@ spec:
     # Disable bundled Ollama — we're using vLLM instead
     ollama:
       enabled: false
-    # vLLM router endpoint (OpenAI-compatible)
-    openaiBaseApiUrl: "http://vllm-router-service.vllm.svc.cluster.local/v1"
+    # LiteLLM gateway endpoint (OpenAI-compatible). LiteLLM proxies to the vLLM router.
+    openaiBaseApiUrl: "http://litellm.litellm.svc.cluster.local:4000/v1"
     persistence:
       enabled: true
       storageClass: local-path

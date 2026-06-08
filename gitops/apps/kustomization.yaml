@@ -6,6 +6,7 @@ resources:
   - sources/vllm.yaml
   - sources/open-webui.yaml
   - sources/langfuse.yaml
+  - sources/litellm.yaml
   # Monitoring — Prometheus + Grafana + Alertmanager (kube-prometheus-stack)
   - monitoring/namespace.yaml
   - monitoring/helmrelease.yaml
@@ -15,6 +16,10 @@ resources:
   - vllm/helmrelease.yaml
   - vllm/hf-token-externalsecret.yaml
   - vllm/pdb.yaml
+  # LiteLLM — dev multi-model gateway (Open WebUI -> LiteLLM -> vLLM), CNPG-backed
+  - litellm/namespace.yaml
+  - litellm/cluster.yaml
+  - litellm/helmrelease.yaml
   # Open WebUI — Claude.ai equivalent frontend, talks to vLLM via OpenAI API
   - open-webui/namespace.yaml
   - open-webui/helmrelease.yaml

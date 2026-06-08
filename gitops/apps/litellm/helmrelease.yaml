@@ -1,0 +1,60 @@
+---
+# LiteLLM proxy -- the dev multi-model gateway. Open WebUI -> LiteLLM -> vLLM router.
+# DB-backed (CNPG cluster litellm-db) so the proxy can do spend tracking, logs, and
+# (once a master key is added) virtual keys + admin UI.
+# No master key on this first pass: the proxy is open on its ClusterIP-internal endpoint,
+# which keeps Open WebUI's wiring keyless. Adding masterkeySecretName later unlocks virtual keys.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: litellm
+  namespace: litellm
+spec:
+  interval: 1h
+  timeout: 15m
+  install:
+    remediation:
+      retries: 5   # the Prisma migration job needs the CNPG DB ready first; retry while it comes up
+  upgrade:
+    remediation:
+      retries: 5
+  chart:
+    spec:
+      chart: litellm-helm
+      version: "1.88.x"
+      sourceRef:
+        kind: HelmRepository
+        name: litellm
+        namespace: flux-system
+  values:
+    fullnameOverride: litellm
+    # The proxy config (rendered to config.yaml). vLLM speaks OpenAI, hence the openai/ prefix.
+    proxy_config:
+      model_list:
+        - model_name: qwen3
+          litellm_params:
+            model: openai/Qwen/Qwen3-4B-Instruct-2507
+            api_base: http://vllm-router-service.vllm.svc.cluster.local/v1
+            api_key: "vllm-needs-no-key"
+      litellm_settings:
+        drop_params: true
+    # Use the CNPG cluster instead of the chart's bundled Bitnami Postgres.
+    db:
+      deployStandalone: false
+      useExisting: true
+      database: litellm
+      endpoint: litellm-db-rw.litellm.svc.cluster.local
+      secret:
+        name: litellm-db-app
+        usernameKey: username
+        passwordKey: password
+    migrationJob:
+      enabled: true
+    service:
+      type: ClusterIP
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "512Mi"
+      limits:
+        memory: "1Gi"
