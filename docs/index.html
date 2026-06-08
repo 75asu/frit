@@ -31,7 +31,7 @@
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg:      #080808;
+      --bg:      #121212;
       --text:    #c8c8c8;
       --text2:   #666666;
       --text3:   #383838;
@@ -55,8 +55,7 @@
     }
 
     html, body {
-      height: 100%;
-      overflow: hidden;
+      min-height: 100%;
       user-select: none;
       -webkit-user-select: none;
     }
@@ -67,19 +66,6 @@
       font-family: 'Azeret Mono', 'Fira Code', monospace;
       -webkit-font-smoothing: antialiased;
       transition: background 0.3s, color 0.3s;
-    }
-
-    /* scanlines */
-    body::after {
-      content: '';
-      position: fixed;
-      inset: 0;
-      background: repeating-linear-gradient(
-        0deg, transparent, transparent 2px,
-        rgba(0,0,0,0.055) 2px, rgba(0,0,0,0.055) 3px
-      );
-      pointer-events: none;
-      z-index: 999;
     }
 
     /* ── toggle ── */
@@ -108,8 +94,7 @@
     .shell {
       display: grid;
       grid-template-columns: 1fr 1.6fr;
-      height: 100vh;
-      overflow: hidden;
+      align-items: start;
     }
 
     /* LEFT PANEL */
@@ -119,7 +104,10 @@
       flex-direction: column;
       justify-content: space-between;
       border-right: 1px solid var(--border);
-      position: relative;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      align-self: start;
     }
 
     .left-top {}
@@ -194,24 +182,30 @@
 
     /* ── RIGHT PANEL ── */
     .right {
-      padding: 48px 10vw 40px 40px;
+      padding: 0 10vw 90px 40px;
+      display: flex;
+      flex-direction: column;
+    }
+    /* milestones fill the first screen; diagram sits below the fold */
+    .right-hero {
+      min-height: 100vh;
       display: flex;
       flex-direction: column;
       justify-content: center;
-      gap: 0;
+      padding: 48px 0;
     }
 
     /* section label */
     .section-lbl {
-      font-size: 12px;
-      font-weight: 500;
-      color: var(--text3);
-      letter-spacing: 0.18em;
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text);
+      letter-spacing: 0.14em;
       text-transform: uppercase;
-      margin-bottom: 16px;
+      margin-bottom: 20px;
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 12px;
     }
     .section-lbl::after {
       content: '';
@@ -307,6 +301,35 @@
       opacity: 0.5;
     }
 
+    /* ── architecture (in the right column, below milestones) ── */
+    .arch-block { padding-top: 56px; border-top: 1px solid var(--border); }
+    .arch-cap {
+      font-size: 13px;
+      color: var(--text2);
+      line-height: 1.8;
+      margin-bottom: 24px;
+    }
+    .arch-cap .acc { color: var(--acc); }
+    .arch-cap .hi  { color: var(--text); }
+    .arch-fig {
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.012);
+      padding: 22px 18px;
+    }
+    [data-theme="light"] .arch-fig { background: rgba(0,0,0,0.015); }
+    .arch-img { width: 100%; height: auto; display: block; }
+    .arch-light { display: none; }
+    [data-theme="light"] .arch-dark  { display: none; }
+    [data-theme="light"] .arch-light { display: block; }
+    .arch-foot {
+      margin-top: 12px;
+      font-size: 12px;
+      color: var(--text3);
+      letter-spacing: 0.02em;
+    }
+    .arch-foot a { color: inherit; }
+    .arch-foot a:hover { color: var(--acc); }
+
     /* ── mobile ── */
     @media (max-width: 700px) {
       html, body { overflow: auto; }
@@ -316,12 +339,14 @@
         overflow: visible;
       }
       .left {
+        position: static;
+        height: auto;
         border-right: none;
         border-bottom: 1px solid var(--border);
         padding: 40px 24px 32px;
         gap: 28px;
       }
-      .right { padding: 32px 24px 48px; }
+      .right { padding: 32px 24px 48px; min-height: 0; }
       .toggle { right: 18px; top: 18px; }
     }
   </style>
@@ -352,6 +377,7 @@
       </div>
 
       <div class="left-foot">
+        <a href="#arch">architecture diagram &darr;</a><br>
         <a href="https://github.com/75asu/frit" target="_blank" rel="noopener">github.com/75asu/frit</a><br>
         <a href="https://75asu.pages.dev" target="_blank" rel="noopener">by @75asu</a>
       </div>
@@ -359,6 +385,7 @@
 
     <!-- RIGHT -->
     <section class="right">
+      <div class="right-hero">
       <div class="section-lbl">milestones</div>
       <div class="ms-list">
 
@@ -376,18 +403,18 @@
           <span class="ms-sub">NVML &rarr; Prometheus, custom Go binary</span>
         </div>
 
-        <div class="ms">
+        <div class="ms ms-done">
           <span class="ms-num">M2</span>
           <span class="ms-name">DCGM + Observability Stack</span>
-          <span class="ms-badge badge-q">queued</span>
-          <span class="ms-sub">Grafana dashboards, Alertmanager rules</span>
+          <span class="ms-badge badge-done">shipped</span>
+          <span class="ms-sub">GPU Operator + kube-prometheus via Flux &middot; DCGM &rarr; Prometheus &rarr; Grafana live</span>
         </div>
 
-        <div class="ms">
+        <div class="ms ms-active">
           <span class="ms-num">M3</span>
           <span class="ms-name">Inference Layer + Token Path</span>
-          <span class="ms-badge badge-q">queued</span>
-          <span class="ms-sub">vLLM + LiteLLM + Open WebUI, TTFT dashboard</span>
+          <span class="ms-badge badge-active">active</span>
+          <span class="ms-sub">vLLM (Qwen3-4B) + LiteLLM + Open WebUI running &middot; TTFT dashboard next</span>
         </div>
 
         <div class="ms-later">
@@ -395,6 +422,22 @@
           <span class="ms-later-line"></span>
         </div>
 
+      </div>
+      </div>
+
+      <div class="arch-block" id="arch">
+        <div class="section-lbl">architecture</div>
+        <p class="arch-cap">
+          The whole stack on one <span class="hi">Tesla T4</span>, reconciled by <span class="acc">Flux</span>:
+          laptop &rarr; GitHub &rarr; in-cluster Gitea &rarr; Flux, the inference path
+          (<span class="acc">Open WebUI &rarr; LiteLLM &rarr; vLLM &rarr; Qwen3-4B</span>),
+          a CNPG-backed data tier, Vault/ESO secrets, and the kube-prometheus observability stack.
+        </p>
+        <div class="arch-fig">
+          <img class="arch-img arch-dark" src="architecture-dark.png" alt="frit architecture: GitOps source, infra (GPU Operator, Vault, ESO, CloudNativePG), the inference path, data, and observability, on one Tesla T4." />
+          <img class="arch-img arch-light" src="architecture-light.png" alt="frit architecture: GitOps source, infra (GPU Operator, Vault, ESO, CloudNativePG), the inference path, data, and observability, on one Tesla T4." />
+        </div>
+        <div class="arch-foot">source: <a href="https://github.com/75asu/frit/blob/main/docs/architecture.drawio">docs/architecture.drawio</a></div>
       </div>
     </section>
 

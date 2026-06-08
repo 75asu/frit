@@ -13,7 +13,7 @@ ONVM = set -a; [ -f .env ] && . ./.env; set +a; \
            "$${TARGET_USER}@$$(bin/vm.sh ip)"
 
 .PHONY: help up down ssh status inventory vm-start connect gpu k3s bootstrap cluster teardown \
-        kubeconfig tunnel tunnel-gitea grafana grafana-pass prometheus webui unseal kubectl run metrics chaos chaos-memory chaos-load clean og-image
+        kubeconfig tunnel tunnel-gitea grafana grafana-pass prometheus webui unseal kubectl run metrics chaos chaos-memory chaos-load clean diagram og-image
 
 help: ## show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -95,6 +95,8 @@ clean: ## kill chaos containers on the VM
 	@$(ONVM) "docker rm -f gpu-hog gpu-a gpu-b 2>/dev/null || true"
 
 # -- Misc ----------------------------------------------------------------------
+diagram: ## re-render the architecture diagram (dark + light PNGs) from docs/architecture.drawio
+	@docs/render-diagram.sh
 og-image: ## regenerate docs/og.png from docs/og-card.html
 	@"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
 		--headless --disable-gpu --screenshot="$(shell pwd)/docs/og.png" \
