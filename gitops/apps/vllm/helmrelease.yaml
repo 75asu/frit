@@ -1,9 +1,9 @@
 ---
 # vLLM production-stack — the CoreWeave/CNCF reference inference deployment.
 # Router: prefix-aware routing (routes to node holding matching KV cache prefix).
-# Engine: single T4 (16GB), Phi-3-mini-4k-instruct.
-# Model weights: read from /teamspace/studios/this_studio/models/ (persists across T4 restarts).
-# HF token: pulled from Vault via hf-token ExternalSecret.
+# Engine: single T4 (16GB), Qwen3-4B-Instruct-2507 (fp16, ~8GB weights).
+# Model weights: cached on hostPath /var/lib/frit-models, mounted at HF_HOME's hub dir so they persist across restarts.
+# HF token: pulled from Vault via hf-token ExternalSecret (Qwen3 is ungated; kept for gated models).
 #
 # Chart schema: servingEngineSpec.modelSpec (NOT a top-level "models" key).
 # Omitting pvcStorage prevents PVC creation — use hostPath extraVolumes instead.
@@ -27,13 +27,18 @@ spec:
   values:
     servingEngineSpec:
       enableEngine: true
+      # Single GPU: Recreate (not RollingUpdate) so the old pod releases the GPU
+      # before the new one starts -- otherwise a model swap deadlocks (the new pod
+      # sits Pending forever waiting for the only GPU the old pod still holds).
+      strategy:
+        type: Recreate
       # Replace the default modelSpec array (which has mistral+PVC) with only phi3.
       # Helm will delete vllm-mistral-engine-service and vllm-mistral-storage-claim
       # since they are no longer rendered by this modelSpec.
       modelSpec:
-        - name: phi3
+        - name: qwen3
           enabled: true
-          modelURL: "microsoft/Phi-3-mini-4k-instruct"
+          modelURL: "Qwen/Qwen3-4B-Instruct-2507"
           repository: "lmcache/vllm-openai"
           tag: "latest"
           runtimeClassName: "nvidia"
@@ -41,6 +46,11 @@ spec:
           requestCPU: "4"
           requestMemory: "16Gi"
           requestGPU: 1
+          # HF_HOME must point INTO the mounted cache below. The chart defaults it to
+          # /tmp (ephemeral), so without this weights re-download on every restart.
+          env:
+            - name: HF_HOME
+              value: /root/.cache/huggingface
           # No pvcStorage key — prevents PVC creation.
           # Model weights live on the hostPath below.
           hf_token:
@@ -49,7 +59,7 @@ spec:
           extraVolumes:
             - name: model-cache
               hostPath:
-                path: /teamspace/studios/this_studio/models
+                path: /var/lib/frit-models
                 type: DirectoryOrCreate
           extraVolumeMounts:
             - name: model-cache
@@ -58,7 +68,7 @@ spec:
             v0: "1"
             maxModelLen: 4096
             enablePrefixCaching: true
-            dtype: auto
+            dtype: float16  # T4 (Turing) has no bf16; pin fp16 to avoid a load-time error
             gpuMemoryUtilization: 0.9
             tensorParallelSize: 1
           lmcacheConfig:

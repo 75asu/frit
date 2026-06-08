@@ -14,7 +14,7 @@ A public OSS project that demonstrates production-grade GPU reliability engineer
 |-----------------|----------------|
 | Claude.ai | Open WebUI |
 | Claude API | LiteLLM proxy |
-| Claude model | vLLM + Qwen2.5-7B on a T4 |
+| Claude model | vLLM + Qwen3-4B on a T4 |
 | Observability | DCGM + Prometheus + Grafana |
 
 ---

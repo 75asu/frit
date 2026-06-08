@@ -21,4 +21,4 @@ spec:
   selector:
     matchLabels:
       app.kubernetes.io/component: serving-engine
-      app.kubernetes.io/name: phi3
+      # name-agnostic on purpose -- survives model swaps (phi3 -> qwen3 -> ...)

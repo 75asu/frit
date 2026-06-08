@@ -15,14 +15,14 @@ A public OSS project that demonstrates AIRE competency by building and operating
 | Claude.ai (web chat) | Local chat UI | **Open WebUI** | - |
 | Claude API routing layer | Request routing, prefix-aware dispatch | **vLLM built-in router** | CoreWeave/llm-d pattern |
 | Dev API gateway (multi-model testing) | Local proxy for model switching | **LiteLLM** | Dev tool only — not what frontier labs run in prod |
-| Claude model | GPU inference engine | **vLLM** + Qwen2.5-7B-Instruct | CoreWeave's recommended inference engine |
+| Claude model | GPU inference engine | **vLLM** + Qwen3-4B-Instruct | CoreWeave's recommended inference engine |
 | Claude Code (CLI) | Terminal coding agent | **Aider** | - |
 | CPU / secondary backend | Simulated degraded backend | **vLLM CPU-only** | Simulates Anthropic's multi-platform routing |
 
 **The reliability layer (what gets practiced on top):**
 GPU observability, inference SLOs, chaos engineering, load testing, postmortems, and the ops cadence that Staff-level SREs run. Built on a single GCP Spot Tesla T4 (the `asu-sandbox` VM), using all free OSS tools. Deployment is GitOps: manifests in `gitops/`, served from an in-cluster Gitea repo, reconciled by Flux. Every milestone ships a real artifact and a blog post.
 
-> **Status note (2026-06-08):** M0 done, M2 core done (DCGM->Prometheus->Grafana dashboard 12239 live), M3 in progress (vLLM Phi-3 + Open WebUI + a PodDisruptionBudget on the engine). Moved off Lightning.ai entirely -- the lab runs on the GCP T4 now. Convenience targets added: `make grafana` / `make grafana-pass` / `make prometheus` (open UIs via pure SSH, no local kubeconfig). The four-session plan below is the original Lightning.ai-era sequence, kept for historical context only -- the Milestone Overview table above is the live source of truth.
+> **Status note (2026-06-08):** M0 done, M2 core done (DCGM->Prometheus->Grafana dashboard 12239 live), M3 in progress (vLLM Qwen3-4B + Open WebUI + a PodDisruptionBudget on the engine). Moved off Lightning.ai entirely -- the lab runs on the GCP T4 now. Convenience targets added: `make grafana` / `make grafana-pass` / `make prometheus` (open UIs via pure SSH, no local kubeconfig). The four-session plan below is the original Lightning.ai-era sequence, kept for historical context only -- the Milestone Overview table above is the live source of truth.
 
 Repo: `github.com/binarysquadd/frit`
 Related: [Kiln](https://github.com/binarysquadd/kiln) — the isolation platform this reliability layer will eventually run on top of.
@@ -72,7 +72,7 @@ Related: [Kiln](https://github.com/binarysquadd/kiln) — the isolation platform
 | M0 | GPU Foundation | **DONE** | driver + DCGM + k3s on the GCP T4, one-command reprovision | - |
 | M1 | GPU Metrics Exporter | NOT STARTED | Go binary (NVML → Prometheus) | "building a gpu metrics exporter in go" |
 | M2 | DCGM + Observability Stack | **DONE (core)** | GPU Operator + kube-prometheus-stack via Flux; DCGM→Prometheus→Grafana dashboard 12239 live. Remaining: gpu_util alert rule + health CronJob | "dcgm vs nvml: what changes" |
-| M3 | Inference Layer + Token Path | **IN PROGRESS** | vLLM (Phi-3) + Open WebUI running; PDB added for the engine. Remaining: TTFT p50/p99 Grafana panel | "measuring ttft on a t4" |
+| M3 | Inference Layer + Token Path | **IN PROGRESS** | vLLM (Qwen3-4B) + Open WebUI running; PDB added for the engine. Remaining: TTFT p50/p99 Grafana panel | "measuring ttft on a t4" |
 | M3.5 | Distributed Tracing (token path) | NOT STARTED | OTEL Collector + Tempo, trace/metric/log correlation | "tracing the llm token path" |
 | M4 | SLOs + Alerting | NOT STARTED | SLO.md, Alertmanager rules, error budget | "designing slos for inference workloads" |
 | M5 | Multi-Platform Simulation | NOT STARTED | 3 gateways, canary config, equivalence checker | "how anthropic's routing layer works" |
@@ -168,7 +168,7 @@ curl / Prometheus scrape
 
 ## M3: Inference Layer + Token Path
 
-**Status:** IN PROGRESS -- vLLM (Phi-3) + Open WebUI running on the T4 via the production-stack chart; a PodDisruptionBudget (minAvailable 1) now protects the engine for the upcoming drain/remediation work. Remaining: the TTFT p50/p95/p99 Grafana panel.
+**Status:** IN PROGRESS -- vLLM (Qwen3-4B-Instruct) + Open WebUI running on the T4 via the production-stack chart; a PodDisruptionBudget (minAvailable 1) now protects the engine for the upcoming drain/remediation work. Remaining: the TTFT p50/p95/p99 Grafana panel.
 
 **Goal:** Run a real LLM and observe it end-to-end. This is the workload AIRE monitors. Without a real inference workload, the observability stack has nothing meaningful to watch. TTFT (Time To First Token) is the primary user-facing signal — get it into Grafana.
 
