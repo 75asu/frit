@@ -9,7 +9,7 @@ KUBECTL    := kubectl --kubeconfig=$(KUBECONFIG)
 
 # Run a command on the VM over SSH (live IP from gcloud). Usage: $(call onvm,<cmd>)
 ONVM = set -a; [ -f .env ] && . ./.env; set +a; \
-       ssh -i "$${SSH_KEY_PATH/#\~/$$HOME}" -o StrictHostKeyChecking=accept-new \
+       ssh -i "$${SSH_KEY_PATH/\#\~/$$HOME}" -o StrictHostKeyChecking=accept-new \
            "$${TARGET_USER}@$$(bin/vm.sh ip)"
 
 .PHONY: help up down ssh status inventory vm-start connect gpu k3s bootstrap cluster teardown \
