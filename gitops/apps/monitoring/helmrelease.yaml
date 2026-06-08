@@ -37,6 +37,14 @@ spec:
         existingSecret: grafana-admin-secret
         userKey: admin-user
         passwordKey: admin-password
+      # Local lab: no login screen. Anonymous visitors get full Admin.
+      # (admin secret above stays as a fallback if anonymous is ever disabled.)
+      grafana.ini:
+        auth:
+          disable_login_form: true
+        auth.anonymous:
+          enabled: true
+          org_role: Admin
       persistence:
         enabled: true
         storageClassName: local-path
