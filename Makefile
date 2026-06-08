@@ -62,12 +62,12 @@ tunnel-gitea: ## SSH-forward Gitea (127.0.0.1:30080)
 grafana: ## open Grafana at http://localhost:3000 -- pure SSH, no local kubeconfig touched
 	@echo ">>> Grafana: http://localhost:3000   login: admin   (password: run 'make grafana-pass')"
 	@echo ">>> wait ~3s for the port-forward to bind, then open the URL. Ctrl-C closes it."
-	@$(ONVM) -L 3000:localhost:3000 "sudo k3s kubectl -n monitoring port-forward svc/kube-prometheus-stack-grafana 3000:80"
+	@$(ONVM) -t -L 3000:localhost:3000 "sudo k3s kubectl -n monitoring port-forward svc/kube-prometheus-stack-grafana 3000:80"
 grafana-pass: ## print the Grafana admin user + password (from the in-cluster secret)
 	@$(ONVM) "ns=monitoring; s=grafana-admin-secret; echo -n 'user: '; sudo k3s kubectl -n \$$ns get secret \$$s -o jsonpath='{.data.admin-user}' | base64 -d; echo; echo -n 'pass: '; sudo k3s kubectl -n \$$ns get secret \$$s -o jsonpath='{.data.admin-password}' | base64 -d; echo"
 prometheus: ## open Prometheus at http://localhost:9090 -- pure SSH, no local kubeconfig touched
 	@echo ">>> Prometheus: http://localhost:9090   (wait ~3s, then open. Ctrl-C closes it.)"
-	@$(ONVM) -L 9090:localhost:9090 "sudo k3s kubectl -n monitoring port-forward svc/kube-prometheus-stack-prometheus 9090:9090"
+	@$(ONVM) -t -L 9090:localhost:9090 "sudo k3s kubectl -n monitoring port-forward svc/kube-prometheus-stack-prometheus 9090:9090"
 kubectl: ## kubectl via the fetched kubeconfig (needs make tunnel). Usage: make kubectl CMD="get pods -A"
 	@$(KUBECTL) $(CMD)
 
