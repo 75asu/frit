@@ -5,6 +5,10 @@ resources:
   - sources/hashicorp.yaml
   - sources/external-secrets.yaml
   - sources/nvidia.yaml
+  - sources/cnpg.yaml
+  # CNPG — CloudNativePG operator (Postgres for the LiteLLM proxy DB)
+  - cnpg/namespace.yaml
+  - cnpg/helmrelease.yaml
   # Vault — secrets backend
   - vault/namespace.yaml
   - vault/helmrelease.yaml
