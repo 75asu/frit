@@ -14,6 +14,7 @@ resources:
   - vllm/namespace.yaml
   - vllm/helmrelease.yaml
   - vllm/hf-token-externalsecret.yaml
+  - vllm/pdb.yaml
   # Open WebUI — Claude.ai equivalent frontend, talks to vLLM via OpenAI API
   - open-webui/namespace.yaml
   - open-webui/helmrelease.yaml

@@ -1,0 +1,24 @@
+---
+# PodDisruptionBudget for the vLLM serving engine (Phi-3).
+#
+# What it does: during a VOLUNTARY disruption (a node drain -- e.g. the one our
+# GPU-remediation operator will trigger in M2), Kubernetes' eviction API checks
+# this budget first. With minAvailable: 1 it will NOT evict the last healthy
+# engine pod -- the drain waits/blocks instead of brutally killing the model server.
+#
+# On a single-GPU lab there is only one engine replica, so this PDB fully protects
+# it: a drain cannot evict it without leaving 0 available. That is the point -- it
+# proves the operator's drain respects reliability constraints instead of being a
+# blind `kubectl delete`. At fleet scale you'd run more replicas so one can move
+# while the budget stays satisfied.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: vllm-phi3-engine
+  namespace: vllm
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: serving-engine
+      app.kubernetes.io/name: phi3
