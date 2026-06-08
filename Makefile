@@ -13,7 +13,7 @@ ONVM = set -a; [ -f .env ] && . ./.env; set +a; \
            "$${TARGET_USER}@$$(bin/vm.sh ip)"
 
 .PHONY: help up down ssh status inventory vm-start connect gpu k3s bootstrap cluster teardown \
-        kubeconfig tunnel tunnel-gitea grafana grafana-pass prometheus kubectl run metrics chaos chaos-memory chaos-load clean og-image
+        kubeconfig tunnel tunnel-gitea grafana grafana-pass prometheus webui unseal kubectl run metrics chaos chaos-memory chaos-load clean og-image
 
 help: ## show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -68,6 +68,13 @@ grafana-pass: ## print the Grafana admin user + password (from the in-cluster se
 prometheus: ## open Prometheus at http://localhost:9090 -- pure SSH, no local kubeconfig touched
 	@echo ">>> Prometheus: http://localhost:9090   (wait ~3s, then open. Ctrl-C closes it.)"
 	@$(ONVM) -t -L 9090:localhost:9090 "sudo k3s kubectl -n monitoring port-forward svc/kube-prometheus-stack-prometheus 9090:9090"
+webui: ## open Open WebUI -- the Claude.ai-equivalent chat -- at http://localhost:8080
+	@echo ">>> Open WebUI: http://localhost:8080   (first visit asks you to create a LOCAL admin account)"
+	@echo ">>> then pick the Qwen3 model in the top-left dropdown. Ctrl-C closes the tunnel."
+	@$(ONVM) -t -L 8080:localhost:8080 "sudo k3s kubectl -n open-webui port-forward svc/open-webui 8080:80"
+unseal: ## unseal Vault (Shamir re-seals on every VM restart) + kick ESO to re-sync secrets
+	@echo ">>> unsealing Vault + restarting ESO ..."
+	@$(ONVM) "sudo k3s kubectl -n vault exec vault-0 -- vault operator unseal '$$VAULT_UNSEAL_KEY' | grep -i '^Sealed' && sudo k3s kubectl -n external-secrets rollout restart deploy/external-secrets >/dev/null && echo 'ESO restarted -- secrets will re-sync'"
 kubectl: ## kubectl via the fetched kubeconfig (needs make tunnel). Usage: make kubectl CMD="get pods -A"
 	@$(KUBECTL) $(CMD)
 
