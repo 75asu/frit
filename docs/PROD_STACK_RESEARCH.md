@@ -125,7 +125,7 @@ This is the operational detail nobody documents but everyone hits at scale.
   ReadOnlyMany PersistentVolumes allow multiple inference pods to share the same weight files.
 
 **For frit:** Model weights stored at `/teamspace/studios/this_studio/models/` — this path
-persists across Lightning.ai studio restarts (maps to the "hot cache" tier in production).
+persists across VM restarts (maps to the "hot cache" tier in production).
 vLLM reads weights from this path at startup. No re-download on studio restart.
 
 ---

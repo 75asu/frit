@@ -2,7 +2,7 @@
 # NVIDIA GPU Operator — replaces the manual setup.yml DCGM + toolkit install.
 # Handles: device plugin, DCGM exporter, containerd runtime config for k3s.
 #
-# driver.enabled=false: Lightning.ai T4 already has the NVIDIA driver installed.
+# driver.enabled=false: GCP T4 host already has the NVIDIA driver (installed by make gpu).
 # The Operator only installs the device plugin, container toolkit, and DCGM exporter.
 #
 # k3s-specific: containerd socket and config paths differ from upstream k8s.

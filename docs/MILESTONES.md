@@ -31,7 +31,7 @@ Related: [Kiln](https://github.com/binarysquadd/kiln) — the isolation platform
 
 ## The Four-Session Execution Plan
 
-**Session 2 (next Lightning.ai open — completes M0):**
+**Session 2 (completes M0, historical):**
 - Install DCGM, run `dcgm-exporter`, confirm GPU metrics in Prometheus
 - Note exact install steps in session-log.md
 - M0 is done when `curl localhost:9400/metrics` returns live GPU metrics
@@ -86,6 +86,7 @@ Related: [Kiln](https://github.com/binarysquadd/kiln) — the isolation platform
 | M10 | TPU Burst (ephemeral) | NOT STARTED | JAX/XLA inference on a TPU VM | "a gpu sre's first day on a tpu" |
 | M11 | Firmware & Driver Compatibility Ops | NOT STARTED | driver/firmware matrix, staged rollout + rollback | "firmware ops for sres" |
 | M12 | Cost & Capacity Model | NOT STARTED | per-token cost meter, fleet TCO model | "what does a million tokens cost" |
+| M13 | GPU Fault-Injection + Remediation Operator | NOT STARTED | kubebuilder operator, 2 CRDs: inject synthetic GPU faults, then detect→cordon→drain(PDB-aware)→reset; fleet-scale demo via KWOK + fake-gpu-operator | "building a gpu fault-injection + remediation operator" |
 
 > M3.5 / M5.5 / M5.6 / M6.5 are inserts at their logical position in the existing sequence (decimal-numbered so M0-M8 IDs and the four-session plan stay stable). M9-M12 are advanced extensions; M9-M10 are ephemeral hardware bursts (spin up on Spot, capture one artifact, tear down). All four advanced ones were added from the AIRE gap analysis -- see each section's "Why (AIRE)" note.
 
@@ -98,7 +99,7 @@ Related: [Kiln](https://github.com/binarysquadd/kiln) — the isolation platform
 **Goal:** Establish the baseline. Confirm the T4 works, Docker GPU passthrough works, and the machine can be reprovisioned from scratch with one command. This is the foundation every other milestone builds on.
 
 **What gets built:**
-- [done] `make setup` — provisions Docker, NVIDIA container toolkit, Go on a fresh Lightning.ai T4
+- [done] `make setup` — provisions Docker, NVIDIA container toolkit, Go on a fresh GCP T4
 - [done] `make checklist` — verifies: nvidia-smi, Docker GPU passthrough, Go version
 - [done] nvidia-smi confirmed: Tesla T4, 16GB VRAM, CUDA 13.0, Driver 580, 40C idle, 34W
 - [done] Docker GPU passthrough: `docker run --gpus all nvidia/cuda nvidia-smi` shows T4
@@ -481,6 +482,27 @@ Open WebUI / Aider (CLI)
 **Content:** dev.to article -- "what does a million claude-equivalent tokens cost? a homelab-to-fleet tco model."
 
 **Why (AIRE):** Layer 5 cost meters; Full Scope -- "ensure GPU workloads are reliable, schedulable, and cost-efficient."
+
+---
+
+## M13: GPU Fault-Injection + Remediation Operator
+
+**Status:** NOT STARTED -- the flagship build. Evolves M7's chaos-injector CLI into a real Kubernetes operator.
+
+**Goal:** Close a gap the GPU-on-Kubernetes ecosystem hasn't: there is no "Chaos Mesh for GPUs." NVIDIA's NVSentinel now *remediates* GPU faults, but nothing lets you *test* a remediation pipeline by injecting faults on demand. This operator does both halves -- inject a synthetic GPU fault, then detect it and drive recovery -- so you can prove a cluster actually recovers instead of hoping it does.
+
+**What gets built:**
+- A kubebuilder / controller-runtime operator (Go) with two CRDs:
+  - `GPUFaultInjection` -- synthesises a fault on a target node: an XID error (e.g. 79, "GPU fallen off the bus"), an ECC error, or a thermal throttle, via `dcgmi --inject` / injected NVML/DCGM signals.
+  - `GPUNodeRemediationPolicy` -- the control loop: reads DCGM/NVML, classifies the fault, sets a Node condition, cordons the node, drains pods **respecting PodDisruptionBudgets**, triggers a (mock) GPU reset, and records detection-to-drain latency.
+- A per-node DaemonSet detector + a central controller. Blast-radius / topology-aware drain (don't drain two nodes in one NVLink domain at once).
+- Prometheus metrics + a Grafana panel for detection-to-drain latency.
+
+**Demoable on one GPU** -- because you *simulate* the fault, no hardware has to actually fail. **Fleet scale** is shown with KWOK + fake-gpu-operator: inject across ~100 fake GPU nodes and watch coordinated remediation.
+
+**Done when:** `kubectl apply` a `GPUFaultInjection` for a synthetic XID -> the controller classifies it, cordons the node, drains the vLLM engine while respecting its PDB, triggers a mock reset, and the detection-to-drain latency appears on the Grafana panel.
+
+**Content:** dev.to article -- "building a gpu fault-injection + remediation operator: testing whether your cluster actually recovers."
 
 ---
 
