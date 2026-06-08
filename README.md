@@ -2,7 +2,7 @@
 
 GPU reliability engineering at homelab scale. One GPU VM. The full inference stack: vLLM, LiteLLM, Open WebUI, DCGM. Real SLOs, chaos experiments, postmortems. One GPU practicing patterns that hold at 1000.
 
-**Status:** M0 in progress — [75asu.github.io/frit](https://75asu.github.io/frit)
+**Status:** M0 done · M2 core done (DCGM → Prometheus → Grafana live) · M3 in progress — [75asu.github.io/frit](https://75asu.github.io/frit)
 
 ---
 
@@ -23,10 +23,10 @@ A public OSS project that demonstrates production-grade GPU reliability engineer
 
 | # | Name | Status |
 |---|------|--------|
-| M0 | GPU Foundation — driver, DCGM, Docker GPU passthrough, k3s | **in progress** |
+| M0 | GPU Foundation — driver, DCGM, Docker GPU passthrough, k3s | **done** |
 | M1 | GPU Metrics Exporter — NVML → Prometheus, custom Go binary | queued |
-| M2 | DCGM + Observability Stack — Grafana dashboards, Alertmanager rules | queued |
-| M3 | Inference Layer + Token Path — vLLM + LiteLLM + Open WebUI, TTFT dashboard | queued |
+| M2 | DCGM + Observability Stack — Grafana dashboards, Alertmanager rules | **done (core)** |
+| M3 | Inference Layer + Token Path — vLLM + LiteLLM + Open WebUI, TTFT dashboard | **in progress** |
 | M4 | SLOs + Alerting — error budgets, burn rate alerts | queued |
 | M5 | Multi-Platform Simulation — canary routing, equivalence validation | queued |
 | M6 | Load Testing — ramp/soak/spike, breaking point documented | queued |

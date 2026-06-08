@@ -20,7 +20,9 @@ A public OSS project that demonstrates AIRE competency by building and operating
 | CPU / secondary backend | Simulated degraded backend | **vLLM CPU-only** | Simulates Anthropic's multi-platform routing |
 
 **The reliability layer (what gets practiced on top):**
-GPU observability, inference SLOs, chaos engineering, load testing, postmortems, and the ops cadence that Staff-level SREs run. Built on a single Lightning.ai Tesla T4, using all free OSS tools. Every milestone ships a real artifact and a blog post.
+GPU observability, inference SLOs, chaos engineering, load testing, postmortems, and the ops cadence that Staff-level SREs run. Built on a single GCP Spot Tesla T4 (the `asu-sandbox` VM), using all free OSS tools. Deployment is GitOps: manifests in `gitops/`, served from an in-cluster Gitea repo, reconciled by Flux. Every milestone ships a real artifact and a blog post.
+
+> **Status note (2026-06-08):** M0 done, M2 core done (DCGM->Prometheus->Grafana dashboard 12239 live), M3 in progress (vLLM Phi-3 + Open WebUI + a PodDisruptionBudget on the engine). Moved off Lightning.ai entirely -- the lab runs on the GCP T4 now. Convenience targets added: `make grafana` / `make grafana-pass` / `make prometheus` (open UIs via pure SSH, no local kubeconfig). The four-session plan below is the original Lightning.ai-era sequence, kept for historical context only -- the Milestone Overview table above is the live source of truth.
 
 Repo: `github.com/binarysquadd/frit`
 Related: [Kiln](https://github.com/binarysquadd/kiln) — the isolation platform this reliability layer will eventually run on top of.
@@ -67,10 +69,10 @@ Related: [Kiln](https://github.com/binarysquadd/kiln) — the isolation platform
 
 | # | Name | Status | Primary Artifact | Blog Post |
 |---|------|--------|-----------------|-----------|
-| M0 | GPU Foundation | IN PROGRESS | Session log, Makefile setup | - |
+| M0 | GPU Foundation | **DONE** | driver + DCGM + k3s on the GCP T4, one-command reprovision | - |
 | M1 | GPU Metrics Exporter | NOT STARTED | Go binary (NVML → Prometheus) | "building a gpu metrics exporter in go" |
-| M2 | DCGM + Observability Stack | NOT STARTED | Grafana dashboard, Docker Compose | "dcgm vs nvml: what changes" |
-| M3 | Inference Layer + Token Path | NOT STARTED | vLLM + LiteLLM + Open WebUI + TTFT dashboard | "measuring ttft on a t4" |
+| M2 | DCGM + Observability Stack | **DONE (core)** | GPU Operator + kube-prometheus-stack via Flux; DCGM→Prometheus→Grafana dashboard 12239 live. Remaining: gpu_util alert rule + health CronJob | "dcgm vs nvml: what changes" |
+| M3 | Inference Layer + Token Path | **IN PROGRESS** | vLLM (Phi-3) + Open WebUI running; PDB added for the engine. Remaining: TTFT p50/p99 Grafana panel | "measuring ttft on a t4" |
 | M3.5 | Distributed Tracing (token path) | NOT STARTED | OTEL Collector + Tempo, trace/metric/log correlation | "tracing the llm token path" |
 | M4 | SLOs + Alerting | NOT STARTED | SLO.md, Alertmanager rules, error budget | "designing slos for inference workloads" |
 | M5 | Multi-Platform Simulation | NOT STARTED | 3 gateways, canary config, equivalence checker | "how anthropic's routing layer works" |
@@ -91,7 +93,7 @@ Related: [Kiln](https://github.com/binarysquadd/kiln) — the isolation platform
 
 ## M0: GPU Foundation
 
-**Status:** IN PROGRESS — Session 1 complete.
+**Status:** DONE -- driver + DCGM + k3s live on the GCP T4; `make connect` / `make up` reprovision from scratch.
 
 **Goal:** Establish the baseline. Confirm the T4 works, Docker GPU passthrough works, and the machine can be reprovisioned from scratch with one command. This is the foundation every other milestone builds on.
 
@@ -100,8 +102,8 @@ Related: [Kiln](https://github.com/binarysquadd/kiln) — the isolation platform
 - [done] `make checklist` — verifies: nvidia-smi, Docker GPU passthrough, Go version
 - [done] nvidia-smi confirmed: Tesla T4, 16GB VRAM, CUDA 13.0, Driver 580, 40C idle, 34W
 - [done] Docker GPU passthrough: `docker run --gpus all nvidia/cuda nvidia-smi` shows T4
-- [next] DCGM installed, `dcgmi discovery` confirms T4
-- [next] `dcgm-exporter` running, `curl :9400/metrics` returns GPU metrics
+- [done] DCGM running via the GPU Operator; `nvidia-dcgm-exporter` pod healthy
+- [done] dcgm-exporter scraped by Prometheus (ServiceMonitor); GPU metrics confirmed live in Grafana (dashboard 12239)
 
 **Done when:** `curl localhost:9400/metrics` returns live GPU metrics from dcgm-exporter on the T4.
 
@@ -145,7 +147,7 @@ curl / Prometheus scrape
 
 ## M2: DCGM + Observability Stack
 
-**Status:** NOT STARTED
+**Status:** DONE (core) -- GPU Operator + kube-prometheus-stack deployed via Flux; DCGM -> Prometheus -> Grafana dashboard 12239 is live with real T4 metrics. Remaining: the `gpu_util > 90%` alert rule + the active health CronJob.
 
 **Goal:** Replace the custom NVML exporter with the industry standard (DCGM), wire it to Prometheus, and build the first Grafana dashboard. This is the stack Anthropic runs at scale. The goal is to understand *why* DCGM exists on top of NVML — what it adds, what it costs, what it catches that NVML misses.
 
@@ -165,7 +167,7 @@ curl / Prometheus scrape
 
 ## M3: Inference Layer + Token Path
 
-**Status:** NOT STARTED
+**Status:** IN PROGRESS -- vLLM (Phi-3) + Open WebUI running on the T4 via the production-stack chart; a PodDisruptionBudget (minAvailable 1) now protects the engine for the upcoming drain/remediation work. Remaining: the TTFT p50/p95/p99 Grafana panel.
 
 **Goal:** Run a real LLM and observe it end-to-end. This is the workload AIRE monitors. Without a real inference workload, the observability stack has nothing meaningful to watch. TTFT (Time To First Token) is the primary user-facing signal — get it into Grafana.
 
