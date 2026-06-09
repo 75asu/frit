@@ -22,7 +22,7 @@ A public OSS project that demonstrates AIRE competency by building and operating
 **The reliability layer (what gets practiced on top):**
 GPU observability, inference SLOs, chaos engineering, load testing, postmortems, and the ops cadence that Staff-level SREs run. Built on a single GCP Spot Tesla T4 (the `asu-sandbox` VM), using all free OSS tools. Deployment is GitOps: manifests in `gitops/`, served from an in-cluster Gitea repo, reconciled by Flux. Every milestone ships a real artifact and a blog post.
 
-> **Status note (2026-06-08):** M0 done, M2 core done (DCGM->Prometheus->Grafana dashboard 12239 live), M3 in progress (vLLM Qwen3-4B + Open WebUI + a PodDisruptionBudget on the engine). Moved off Lightning.ai entirely -- the lab runs on the GCP T4 now. Convenience targets added: `make grafana` / `make grafana-pass` / `make prometheus` (open UIs via pure SSH, no local kubeconfig). The four-session plan below is the original Lightning.ai-era sequence, kept for historical context only -- the Milestone Overview table above is the live source of truth.
+> **Status note (2026-06-09):** M0 done, M2 core done (DCGM->Prometheus->Grafana dashboard 12239 live), **M3 done** -- vLLM (Qwen3-4B) + LiteLLM + Open WebUI serving on the T4, a ServiceMonitor scraping the engine, and a GitOps-delivered Grafana dashboard ("vLLM Token Path -- SLO & TTFT") showing TTFT p50/p90/p99, the SLI (% under 500ms), error budget, throughput and saturation. Added `make sync` (one-command laptop->GitHub->Gitea->Flux delivery) and hardened the engine liveness probe (chart default had no `timeoutSeconds`, so k8s's 1s default was killing the engine under load). **Known issues (backlog):** the production-stack router doesn't re-register the engine after a restart; the T4 saturates under burst load (now degrades gracefully -- engine stays up -- instead of being killed). Moved off Lightning.ai entirely; the lab runs on the GCP T4. The four-session plan below is the original Lightning.ai-era sequence, kept for historical context only -- the Milestone Overview table above is the live source of truth.
 
 Repo: `github.com/binarysquadd/frit`
 Related: [Kiln](https://github.com/binarysquadd/kiln) — the isolation platform this reliability layer will eventually run on top of.
@@ -72,7 +72,7 @@ Related: [Kiln](https://github.com/binarysquadd/kiln) — the isolation platform
 | M0 | GPU Foundation | **DONE** | driver + DCGM + k3s on the GCP T4, one-command reprovision | - |
 | M1 | GPU Metrics Exporter | NOT STARTED | Go binary (NVML → Prometheus) | "building a gpu metrics exporter in go" |
 | M2 | DCGM + Observability Stack | **DONE (core)** | GPU Operator + kube-prometheus-stack via Flux; DCGM→Prometheus→Grafana dashboard 12239 live. Remaining: gpu_util alert rule + health CronJob | "dcgm vs nvml: what changes" |
-| M3 | Inference Layer + Token Path | **IN PROGRESS** | vLLM (Qwen3-4B) + Open WebUI running; PDB added for the engine. Remaining: TTFT p50/p99 Grafana panel | "measuring ttft on a t4" |
+| M3 | Inference Layer + Token Path | **DONE** | vLLM (Qwen3-4B) + LiteLLM + Open WebUI; ServiceMonitor + GitOps TTFT/SLO/error-budget Grafana dashboard; engine probe hardening; `make sync` | "measuring ttft on a t4" |
 | M3.5 | Distributed Tracing (token path) | NOT STARTED | OTEL Collector + Tempo, trace/metric/log correlation | "tracing the llm token path" |
 | M4 | SLOs + Alerting | NOT STARTED | SLO.md, Alertmanager rules, error budget | "designing slos for inference workloads" |
 | M5 | Multi-Platform Simulation | NOT STARTED | 3 gateways, canary config, equivalence checker | "how anthropic's routing layer works" |
@@ -168,7 +168,11 @@ curl / Prometheus scrape
 
 ## M3: Inference Layer + Token Path
 
-**Status:** IN PROGRESS -- vLLM (Qwen3-4B-Instruct) + Open WebUI running on the T4 via the production-stack chart; a PodDisruptionBudget (minAvailable 1) now protects the engine for the upcoming drain/remediation work. Remaining: the TTFT p50/p95/p99 Grafana panel.
+**Status:** DONE (2026-06-09) -- vLLM (Qwen3-4B-Instruct) + LiteLLM + Open WebUI serving on the T4 via the production-stack chart (CNPG-backed). A ServiceMonitor scrapes the engine's `/metrics`, and a GitOps-delivered Grafana dashboard ("vLLM Token Path -- SLO & TTFT", `gitops/apps/monitoring/vllm-slo-dashboard.yaml`) shows TTFT p50/p90/p99, the SLI (% of requests under 500ms), error-budget remaining, throughput, and saturation (queue-wait + TPOT p99). A PodDisruptionBudget (minAvailable 1) protects the engine for later drain/remediation work.
+
+Hardening done along the way: the engine's chart-default probes omitted `timeoutSeconds`, so Kubernetes applied its 1s default and the **liveness** probe was SIGTERMing a healthy-but-busy engine under load. Relaxed the engine `startup`/`liveness`/`readiness` probes via Helm values so load no longer triggers a restart (graceful degradation instead).
+
+**Known issues (backlog):** (1) the production-stack router doesn't re-register the engine after a restart (`0 serving engines` -> 503); good M7 chaos/postmortem material. (2) the single T4 saturates under burst load -- now sheds requests but stays up; quantify the breaking point in M6 load testing.
 
 **Goal:** Run a real LLM and observe it end-to-end. This is the workload AIRE monitors. Without a real inference workload, the observability stack has nothing meaningful to watch. TTFT (Time To First Token) is the primary user-facing signal — get it into Grafana.
 
