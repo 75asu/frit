@@ -11,6 +11,7 @@ resources:
   - monitoring/namespace.yaml
   - monitoring/helmrelease.yaml
   - monitoring/grafana-externalsecret.yaml
+  - monitoring/vllm-slo-dashboard.yaml
   # vLLM — inference engine with prefix-aware routing (production-stack chart)
   - vllm/namespace.yaml
   - vllm/helmrelease.yaml

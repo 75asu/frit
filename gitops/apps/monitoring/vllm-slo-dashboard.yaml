@@ -1,0 +1,241 @@
+# Grafana dashboard as code. The kube-prometheus-stack Grafana runs a sidecar that
+# watches ConfigMaps labelled grafana_dashboard="1" and imports the JSON automatically
+# -- so this dashboard is delivered by GitOps, never clicked into the UI.
+#
+# SLO modelled here: "99% of requests get their first token in < 500ms."
+#   SLI          = % of requests with TTFT <= 0.5s  (uses the le="0.5" histogram bucket)
+#   error budget = the other 1%  (panel shows how much of it is left over the window)
+# Windows are 30m (this is a lab with minutes of data; real SLOs use 28-30d).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vllm-slo-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"   # the sidecar's import trigger (kube-prometheus-stack default label)
+data:
+  vllm-slo.json: |
+    {
+      "uid": "vllm-slo",
+      "title": "vLLM Token Path -- SLO & TTFT",
+      "tags": ["frit", "vllm", "slo"],
+      "schemaVersion": 39,
+      "editable": true,
+      "refresh": "30s",
+      "time": { "from": "now-1h", "to": "now" },
+      "templating": {
+        "list": [
+          {
+            "name": "datasource",
+            "type": "datasource",
+            "query": "prometheus",
+            "current": {},
+            "hide": 0
+          }
+        ]
+      },
+      "panels": [
+        {
+          "id": 1,
+          "type": "stat",
+          "title": "TTFT p99 (last 5m)",
+          "description": "99th percentile time-to-first-token. The tail latency your unluckiest 1% of users feel. SLO line is 500ms.",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "gridPos": { "h": 4, "w": 8, "x": 0, "y": 0 },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "decimals": 3,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "red", "value": 0.5 }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "prometheus", "uid": "${datasource}" },
+              "expr": "histogram_quantile(0.99, sum(rate(vllm:time_to_first_token_seconds_bucket[5m])) by (le))"
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "type": "stat",
+          "title": "SLI: requests under 500ms (30m)",
+          "description": "The Service Level Indicator: share of requests whose TTFT was <= 0.5s. This is what the SLO is a target for. Target = 99%.",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "gridPos": { "h": 4, "w": 8, "x": 8, "y": 0 },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "decimals": 2,
+              "min": 0,
+              "max": 100,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "red", "value": null },
+                  { "color": "yellow", "value": 99 },
+                  { "color": "green", "value": 99.9 }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": { "colorMode": "value", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "prometheus", "uid": "${datasource}" },
+              "expr": "100 * sum(rate(vllm:time_to_first_token_seconds_bucket{le=\"0.5\"}[30m])) / sum(rate(vllm:time_to_first_token_seconds_count[30m]))"
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "type": "gauge",
+          "title": "Error budget remaining (30m, SLO 99%)",
+          "description": "How much of the 1% error budget is left. 100% = no bad requests. 0% = budget spent. Negative = over budget (freeze features, fix reliability).",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "gridPos": { "h": 4, "w": 8, "x": 16, "y": 0 },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "decimals": 1,
+              "min": -100,
+              "max": 100,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "red", "value": null },
+                  { "color": "yellow", "value": 0 },
+                  { "color": "green", "value": 50 }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": { "showThresholdLabels": false, "showThresholdMarkers": true, "reduceOptions": { "calcs": ["lastNotNull"] } },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "prometheus", "uid": "${datasource}" },
+              "expr": "100 * (1 - (1 - sum(rate(vllm:time_to_first_token_seconds_bucket{le=\"0.5\"}[30m])) / sum(rate(vllm:time_to_first_token_seconds_count[30m]))) / 0.01)"
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "type": "timeseries",
+          "title": "TTFT percentiles (p50 / p90 / p99)",
+          "description": "Time-to-first-token over time. The spread between p50 and p99 is the tail. Red line = 500ms SLO threshold.",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "gridPos": { "h": 8, "w": 24, "x": 0, "y": 4 },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 8, "showPoints": "never" },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "transparent", "value": null },
+                  { "color": "red", "value": 0.5 }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] },
+            "tooltip": { "mode": "multi" }
+          },
+          "targets": [
+            {
+              "refId": "p50",
+              "legendFormat": "p50",
+              "datasource": { "type": "prometheus", "uid": "${datasource}" },
+              "expr": "histogram_quantile(0.5, sum(rate(vllm:time_to_first_token_seconds_bucket[5m])) by (le))"
+            },
+            {
+              "refId": "p90",
+              "legendFormat": "p90",
+              "datasource": { "type": "prometheus", "uid": "${datasource}" },
+              "expr": "histogram_quantile(0.9, sum(rate(vllm:time_to_first_token_seconds_bucket[5m])) by (le))"
+            },
+            {
+              "refId": "p99",
+              "legendFormat": "p99",
+              "datasource": { "type": "prometheus", "uid": "${datasource}" },
+              "expr": "histogram_quantile(0.99, sum(rate(vllm:time_to_first_token_seconds_bucket[5m])) by (le))"
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "type": "timeseries",
+          "title": "Throughput & concurrency",
+          "description": "Successful requests/sec (rate handles counter resets across restarts) and how many requests are running vs waiting in the engine.",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+          "fieldConfig": {
+            "defaults": { "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 8, "showPoints": "never" } },
+            "overrides": []
+          },
+          "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+          "targets": [
+            {
+              "refId": "A",
+              "legendFormat": "success req/s",
+              "datasource": { "type": "prometheus", "uid": "${datasource}" },
+              "expr": "sum(rate(vllm:request_success_total[5m]))"
+            },
+            {
+              "refId": "B",
+              "legendFormat": "running",
+              "datasource": { "type": "prometheus", "uid": "${datasource}" },
+              "expr": "sum(vllm:num_requests_running)"
+            },
+            {
+              "refId": "C",
+              "legendFormat": "waiting",
+              "datasource": { "type": "prometheus", "uid": "${datasource}" },
+              "expr": "sum(vllm:num_requests_waiting)"
+            }
+          ]
+        },
+        {
+          "id": 6,
+          "type": "timeseries",
+          "title": "Saturation: queue wait p99 & TPOT p99",
+          "description": "Queue wait = how long requests sit before the engine starts them (climbs under overload). TPOT = time per output token (inter-token latency).",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+          "fieldConfig": {
+            "defaults": { "unit": "s", "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 8, "showPoints": "never" } },
+            "overrides": []
+          },
+          "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+          "targets": [
+            {
+              "refId": "A",
+              "legendFormat": "queue wait p99",
+              "datasource": { "type": "prometheus", "uid": "${datasource}" },
+              "expr": "histogram_quantile(0.99, sum(rate(vllm:request_queue_time_seconds_bucket[5m])) by (le))"
+            },
+            {
+              "refId": "B",
+              "legendFormat": "TPOT p99",
+              "datasource": { "type": "prometheus", "uid": "${datasource}" },
+              "expr": "histogram_quantile(0.99, sum(rate(vllm:request_time_per_output_token_seconds_bucket[5m])) by (le))"
+            }
+          ]
+        }
+      ]
+    }
