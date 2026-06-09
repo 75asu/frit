@@ -16,6 +16,7 @@ resources:
   - vllm/helmrelease.yaml
   - vllm/hf-token-externalsecret.yaml
   - vllm/pdb.yaml
+  - vllm/servicemonitor.yaml
   # LiteLLM — dev multi-model gateway (Open WebUI -> LiteLLM -> vLLM), CNPG-backed
   - litellm/namespace.yaml
   - litellm/cluster.yaml

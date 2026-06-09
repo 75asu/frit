@@ -1,0 +1,22 @@
+# Tells the Prometheus Operator to scrape the vLLM engine's /metrics endpoint.
+# The operator turns this CRD into real Prometheus scrape config -- we never edit
+# prometheus.yml by hand. It selects the engine *Service*, then scrapes each pod
+# behind that Service's Endpoints individually (so we get per-pod TTFT, not a VIP).
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: vllm-engine
+  namespace: vllm
+  labels:
+    app.kubernetes.io/part-of: vllm-stack
+    release: kube-prometheus-stack   # hygiene; our Prometheus selector is {} so it matches regardless
+spec:
+  namespaceSelector:
+    matchNames: [vllm]
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: serving-engine   # unique to the engine Service (not the router)
+  endpoints:
+    - port: service-port   # the engine Service's named port 80 -> container 8000 (vLLM serves /metrics here)
+      path: /metrics
+      interval: 15s        # scrape cadence; 15s is plenty for a single-GPU lab

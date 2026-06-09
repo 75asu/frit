@@ -13,7 +13,7 @@ ONVM = set -a; [ -f .env ] && . ./.env; set +a; \
            "$${TARGET_USER}@$$(bin/vm.sh ip)"
 
 .PHONY: help up down ssh status inventory vm-start connect gpu k3s bootstrap cluster teardown \
-        kubeconfig tunnel tunnel-gitea grafana grafana-pass prometheus webui unseal kubectl run metrics chaos chaos-memory chaos-load clean diagram og-image
+        kubeconfig tunnel tunnel-gitea grafana grafana-pass prometheus webui unseal kubectl sync run metrics chaos chaos-memory chaos-load clean diagram og-image
 
 help: ## show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -77,6 +77,14 @@ unseal: ## unseal Vault (Shamir re-seals on every VM restart) + kick ESO to re-s
 	@$(ONVM) "sudo k3s kubectl -n vault exec vault-0 -- vault operator unseal '$$VAULT_UNSEAL_KEY' | grep -i '^Sealed' && sudo k3s kubectl -n external-secrets rollout restart deploy/external-secrets >/dev/null && echo 'ESO restarted -- secrets will re-sync'"
 kubectl: ## kubectl via the fetched kubeconfig (needs make tunnel). Usage: make kubectl CMD="get pods -A"
 	@$(KUBECTL) $(CMD)
+sync: ## deliver gitops changes: commit first, then this pushes laptop->GitHub->Gitea + forces Flux to reconcile
+	@echo ">>> 1/3  laptop -> GitHub (origin)"
+	@git push origin main
+	@echo ">>> 2/3  GitHub -> VM clone -> in-cluster Gitea (the repo Flux watches)"
+	@$(ONVM) "sudo git -C /opt/frit pull --ff-only origin main && sudo git -C /opt/frit push gitea main"
+	@echo ">>> 3/3  reconcile Flux (source, then apps + infra)"
+	@$(ONVM) "sudo flux --kubeconfig /etc/rancher/k3s/k3s.yaml reconcile kustomization apps --with-source && sudo flux --kubeconfig /etc/rancher/k3s/k3s.yaml reconcile kustomization infra"
+	@echo ">>> synced."
 
 # -- GPU checks + chaos (over SSH) --------------------------------------------
 run: ## run any command on the VM. Usage: make run CMD="nvidia-smi"
