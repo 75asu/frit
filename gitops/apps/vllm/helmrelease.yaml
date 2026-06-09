@@ -27,6 +27,28 @@ spec:
   values:
     servingEngineSpec:
       enableEngine: true
+      # Probe tuning. The chart's default engine probes omit timeoutSeconds, so k8s
+      # applies its 1s default. Under load vLLM's event loop can't answer /health within
+      # 1s -> 3 misses -> the LIVENESS probe SIGTERMs a healthy-but-busy engine (we saw
+      # exitCode 0 "Completed" + restarts during load). Liveness must only fire on a true
+      # hang; readiness is what should react to "busy". So:
+      #   startupProbe  -> generous window for the slow model load (~2-3 min on a T4)
+      #   livenessProbe -> long timeout + high threshold; restart only if genuinely wedged
+      #   readinessProbe-> moderate; pulls the pod from Endpoints if it can't serve
+      # chart.templateProbe supplies the httpGet /health:8000 action; we set only timing.
+      startupProbe:
+        initialDelaySeconds: 15
+        periodSeconds: 10
+        failureThreshold: 30    # ~5 min budget to finish loading before giving up
+        timeoutSeconds: 5
+      livenessProbe:
+        periodSeconds: 15
+        timeoutSeconds: 10      # tolerate a busy event loop; don't kill on a slow /health
+        failureThreshold: 6     # only restart after ~90s of genuine unresponsiveness
+      readinessProbe:
+        periodSeconds: 10
+        timeoutSeconds: 5
+        failureThreshold: 3
       # Single GPU: Recreate (not RollingUpdate) so the old pod releases the GPU
       # before the new one starts -- otherwise a model swap deadlocks (the new pod
       # sits Pending forever waiting for the only GPU the old pod still holds).
