@@ -1,0 +1,21 @@
+---
+# Stable ClusterIP for the Ray Serve HTTP endpoint (:8000). KubeRay's generated services
+# aren't predictable (the head svc carries a per-deploy hash; the serve-svc appears only
+# once Serve is healthy), so we define a fixed-name Service that selects the serve-proxy
+# pods by stable labels. LiteLLM points here.
+apiVersion: v1
+kind: Service
+metadata:
+  name: frit-serve-http
+  namespace: ray
+  labels:
+    app.kubernetes.io/name: frit-serve
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: frit-serve
+    ray.io/serve: "true"
+  ports:
+    - name: serve
+      port: 8000
+      targetPort: 8000

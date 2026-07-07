@@ -2,7 +2,7 @@
 # CloudNativePG operator -- manages Postgres Clusters via the postgresql.cnpg.io CRDs.
 # Backs the LiteLLM proxy DB (virtual keys, spend tracking, admin UI).
 # Chosen over the litellm chart's bundled Bitnami Postgres (Bitnami free images are
-# deprecated in 2025/26). CNPG is also the operator Fravity runs in production.
+# deprecated in 2025/26). CNPG is a widely used, production-grade Postgres operator.
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:

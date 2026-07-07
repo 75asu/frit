@@ -1,0 +1,11 @@
+---
+# KubeRay operator source: provides the Ray CRDs (RayCluster/RayService/RayJob) used
+# for multi-model Ray Serve on the GPU. Chart: github.com/ray-project/kuberay
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: kuberay
+  namespace: flux-system
+spec:
+  interval: 24h
+  url: https://ray-project.github.io/kuberay-helm/

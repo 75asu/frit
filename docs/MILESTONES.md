@@ -20,7 +20,7 @@ A public OSS project that demonstrates AIRE competency by building and operating
 | CPU / secondary backend | Simulated degraded backend | **vLLM CPU-only** | Simulates Anthropic's multi-platform routing |
 
 **The reliability layer (what gets practiced on top):**
-GPU observability, inference SLOs, chaos engineering, load testing, postmortems, and the ops cadence that Staff-level SREs run. Built on a single GCP Spot Tesla T4 (the `asu-sandbox` VM), using all free OSS tools. Deployment is GitOps: manifests in `gitops/`, served from an in-cluster Gitea repo, reconciled by Flux. Every milestone ships a real artifact and a blog post.
+GPU observability, inference SLOs, chaos engineering, load testing, postmortems, and the ops cadence that Staff-level SREs run. Built on a single GCP Spot Tesla T4 VM, using all free OSS tools. Deployment is GitOps: manifests in `gitops/`, served from an in-cluster Gitea repo, reconciled by Flux. Every milestone ships a real artifact and a blog post.
 
 > **Status note (2026-06-09):** M0 done, M2 core done (DCGM->Prometheus->Grafana dashboard 12239 live), **M3 done** -- vLLM (Qwen3-4B) + LiteLLM + Open WebUI serving on the T4, a ServiceMonitor scraping the engine, and a GitOps-delivered Grafana dashboard ("vLLM Token Path -- SLO & TTFT") showing TTFT p50/p90/p99, the SLI (% under 500ms), error budget, throughput and saturation. Added `make sync` (one-command laptop->GitHub->Gitea->Flux delivery) and hardened the engine liveness probe (chart default had no `timeoutSeconds`, so k8s's 1s default was killing the engine under load). **Known issues (backlog):** the production-stack router doesn't re-register the engine after a restart; the T4 saturates under burst load (now degrades gracefully -- engine stays up -- instead of being killed). Moved off Lightning.ai entirely; the lab runs on the GCP T4. The four-session plan below is the original Lightning.ai-era sequence, kept for historical context only -- the Milestone Overview table above is the live source of truth.
 
@@ -417,7 +417,7 @@ Open WebUI / Aider (CLI)
 
 **Done when:** tensor-parallel vLLM serves across 2x A100, NCCL bandwidth is captured, MIG instances are scheduled, results are written up, and the instance is deleted.
 
-**Cost / quota:** ~$2-3/hr Spot; a 3-4 hr run ≈ $10-20. A100 quota in the project is likely 0 and needs an increase request first. Confirm Fravity credits cover GPU SKUs.
+**Cost / quota:** ~$2-3/hr Spot; a 3-4 hr run ≈ $10-20. A100 quota in the project is likely 0 and needs an increase request first. Confirm the cloud project's credits/billing cover GPU SKUs.
 
 **Content:** dev.to article -- "real multi-gpu on a budget: nvlink, tensor parallelism, and nccl in an afternoon."
 

@@ -1,0 +1,81 @@
+---
+# RayService: Ray Serve serving path (OpenAI-compatible at /<model>/v1/*) on the single
+# T4. This file is cluster/infra only -- models live in serveconfig.yaml and are injected
+# into spec.serveConfigV2 by kustomization.yaml. Bring models up one at a time.
+#
+# Single node: head + GPU worker co-locate on one box, so no nodeSelector / GPU toleration.
+# dtype float16 (Turing has no bf16). Weights pull from HuggingFace to a hostPath cache,
+# so nothing external is needed at serve time.
+#
+# Deploy: the T4 has one GPU, also claimed by the standalone vLLM engine (gitops/apps/vllm).
+# Set that HelmRelease enableEngine:false before reconciling so Ray gets the GPU. The first
+# reconcile may error until the KubeRay CRD is established, then self-heals.
+apiVersion: ray.io/v1
+kind: RayService
+metadata:
+  name: frit-serve
+  namespace: ray
+spec:
+  # Injected from serveconfig.yaml -- keep empty here.
+  serveConfigV2: ""
+
+  rayClusterConfig:
+    rayVersion: "2.56.0"
+
+    # Head runs the Serve router (HTTP on :8000) + dashboard. num-cpus:0 keeps model
+    # replicas off the head; they run on the GPU worker.
+    headGroupSpec:
+      rayStartParams:
+        dashboard-host: "0.0.0.0"
+        num-cpus: "0"
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: frit-serve
+        spec:
+          containers:
+            # ray-llm bundles Ray + vLLM. Verify this image's CUDA works on the T4 driver
+            # and still supports Turing (sm_75); pin an older tag if not.
+            - name: ray-head
+              image: rayproject/ray-llm:2.56.0.32d14d-extra-py312-cu130
+              ports:
+                - { containerPort: 6379, name: gcs }
+                - { containerPort: 8265, name: dashboard }
+                - { containerPort: 8000, name: serve }
+                - { containerPort: 10001, name: client }
+              resources:
+                requests: { cpu: "1", memory: 4Gi }
+                limits: { cpu: "1", memory: 4Gi }
+
+    workerGroupSpecs:
+      # GPU worker holds the whole T4; Ray subdivides it per-model via the fractions in
+      # serveconfig.yaml. Sized small so other cluster pods still fit.
+      - groupName: gpu-workers
+        replicas: 1
+        minReplicas: 1
+        maxReplicas: 1
+        rayStartParams: {}
+        template:
+          metadata:
+            labels:
+              app.kubernetes.io/name: frit-serve
+          spec:
+            runtimeClassName: nvidia
+            containers:
+              - name: ray-worker
+                image: rayproject/ray-llm:2.56.0.32d14d-extra-py312-cu130
+                env:
+                  # cache to hostPath so weights download once and persist
+                  - name: HF_HOME
+                    value: /home/ray/.cache/huggingface
+                resources:
+                  requests: { cpu: "4", memory: 16Gi, nvidia.com/gpu: "1" }
+                  limits: { cpu: "4", memory: 16Gi, nvidia.com/gpu: "1" }
+                volumeMounts:
+                  - name: model-cache
+                    mountPath: /home/ray/.cache/huggingface/hub
+            volumes:
+              - name: model-cache
+                hostPath:
+                  path: /var/lib/frit-models
+                  type: DirectoryOrCreate

@@ -1,0 +1,33 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Namespaced so the generated ConfigMap applies cleanly.
+namespace: ray
+
+resources:
+  - namespace.yaml
+  - operator-helmrelease.yaml
+  - rayservice.yaml
+  - serve-service.yaml
+
+# Load serveconfig.yaml as a value and inject it into the RayService's spec.serveConfigV2,
+# so models are edited as real YAML instead of an inline string.
+configMapGenerator:
+  - name: frit-serve-serveconfig
+    files:
+      - serveConfigV2=serveconfig.yaml
+
+generatorOptions:
+  disableNameSuffixHash: true
+
+replacements:
+  - source:
+      kind: ConfigMap
+      name: frit-serve-serveconfig
+      fieldPath: data.serveConfigV2
+    targets:
+      - select:
+          kind: RayService
+          name: frit-serve
+        fieldPaths:
+          - spec.serveConfigV2

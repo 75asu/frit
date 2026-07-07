@@ -1,0 +1,38 @@
+# Ray Serve app config (the models). Injected into RayService spec.serveConfigV2 by
+# kustomization.yaml. EDIT MODELS HERE. Add a model = another item under applications:
+# with a unique name + route_prefix; GPU fractions across models must sum to < 1.0
+# (this uses 0.3, leaving 0.7 for later models).
+#
+# Two knobs: placement bundle GPU = Ray scheduling quota; gpu_memory_utilization =
+# vLLM memory budget. Kept aligned at 0.3.
+#
+# Why 0.3 fits a 0.5B: bytes/token = 2 x layers x kv_heads x head_dim x dtype_bytes
+# = 2x24x2x64x2 ~= 12 KB/token. 0.3 x 16 GB ~= 4.8 GB, minus ~1 GB weights leaves plenty
+# for KV (~50 full 4k-token sequences) vs max_ongoing_requests 16.
+applications:
+  - name: qwen-05b
+    route_prefix: /qwen-05b
+    import_path: ray.serve.llm:build_openai_app
+    args:
+      llm_configs:
+        - model_loading_config:
+            model_id: qwen-05b
+            model_source: Qwen/Qwen2.5-0.5B-Instruct
+          deployment_config:
+            num_replicas: 1
+            max_ongoing_requests: 16     # continuous-batching width
+          engine_kwargs:
+            tensor_parallel_size: 1
+            dtype: float16               # Turing has no bf16
+            gpu_memory_utilization: 0.3
+            max_model_len: 4096
+            enforce_eager: true          # CUDA graphs off = less memory (baseline)
+            use_tqdm_on_load: false
+          placement_group_config:
+            bundles:
+              - GPU: 0.3
+                CPU: 2
+                memory: 8589934592
+          runtime_env:
+            env_vars:
+              VLLM_RAY_PER_WORKER_GPUS: "0.3"

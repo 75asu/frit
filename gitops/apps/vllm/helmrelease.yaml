@@ -26,7 +26,9 @@ spec:
         namespace: flux-system
   values:
     servingEngineSpec:
-      enableEngine: true
+      # Disabled: Ray Serve (gitops/apps/ray) is now the serving path and holds the single
+      # GPU. Re-enable only when reverting to standalone vLLM -- they can't share one T4.
+      enableEngine: false
       # Probe tuning. The chart's default engine probes omit timeoutSeconds, so k8s
       # applies its 1s default. Under load vLLM's event loop can't answer /health within
       # 1s -> 3 misses -> the LIVENESS probe SIGTERMs a healthy-but-busy engine (we saw

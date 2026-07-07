@@ -56,9 +56,11 @@ kubeconfig: inventory ## fetch kubeconfig from the VM (then use make tunnel + ma
 	@ansible all -m fetch -a "src=/etc/rancher/k3s/k3s.yaml dest=$(shell pwd)/kubeconfig.yaml flat=yes mode=0600" --become
 	@echo "kubeconfig.yaml written. Run: make tunnel"
 tunnel: ## SSH-forward the k3s API (127.0.0.1:6443) -- keep this terminal open
-	@$(ONVM) -N -L 6443:127.0.0.1:6443
+	@echo ">>> connecting + binding 127.0.0.1:6443 (a bind error prints below if the port is busy) ..."
+	@$(ONVM) -t -o ExitOnForwardFailure=yes -L 6443:127.0.0.1:6443 "echo '>>> TUNNEL READY: k3s API on 127.0.0.1:6443 -- open a NEW terminal and run: make kubectl CMD=\"get pods -A\"'; echo '>>> keep THIS terminal open; press Ctrl-C here to close the tunnel.'; sleep infinity"
 tunnel-gitea: ## SSH-forward Gitea (127.0.0.1:30080)
-	@$(ONVM) -N -L 30080:127.0.0.1:30080
+	@echo ">>> connecting + binding 127.0.0.1:30080 ..."
+	@$(ONVM) -t -o ExitOnForwardFailure=yes -L 30080:127.0.0.1:30080 "echo '>>> TUNNEL READY: Gitea on http://127.0.0.1:30080 -- keep THIS terminal open; press Ctrl-C here to close it.'; sleep infinity"
 grafana: ## open Grafana at http://localhost:3000 -- pure SSH, no local kubeconfig touched
 	@echo ">>> Grafana: http://localhost:3000   login: admin   (password: run 'make grafana-pass')"
 	@echo ">>> wait ~3s for the port-forward to bind, then open the URL. Ctrl-C closes it."

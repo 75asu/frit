@@ -1,5 +1,5 @@
 ---
-# LiteLLM proxy -- the dev multi-model gateway. Open WebUI -> LiteLLM -> vLLM router.
+# LiteLLM proxy -- the dev multi-model gateway. Open WebUI -> LiteLLM -> Ray Serve (vLLM).
 # DB-backed (CNPG cluster litellm-db) so the proxy can do spend tracking, logs, and
 # (once a master key is added) virtual keys + admin UI.
 # No master key on this first pass: the proxy is open on its ClusterIP-internal endpoint,
@@ -31,11 +31,14 @@ spec:
     # The proxy config (rendered to config.yaml). vLLM speaks OpenAI, hence the openai/ prefix.
     proxy_config:
       model_list:
-        - model_name: qwen3
+        # Backed by Ray Serve. model_name is what Open WebUI shows; `model` (minus the
+        # openai/ prefix) is the model_id Ray Serve expects; api_base = frit-serve-http
+        # + the model's route_prefix + /v1. Add a model here when you add one in serveconfig.yaml.
+        - model_name: qwen-05b
           litellm_params:
-            model: openai/Qwen/Qwen3-4B-Instruct-2507
-            api_base: http://vllm-router-service.vllm.svc.cluster.local/v1
-            api_key: "vllm-needs-no-key"
+            model: openai/qwen-05b
+            api_base: http://frit-serve-http.ray.svc.cluster.local:8000/qwen-05b/v1
+            api_key: "ray-serve-needs-no-key"
       litellm_settings:
         drop_params: true
     # Use the CNPG cluster instead of the chart's bundled Bitnami Postgres.
