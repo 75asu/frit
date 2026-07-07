@@ -61,6 +61,19 @@ spec:
               app.kubernetes.io/name: frit-serve
           spec:
             runtimeClassName: nvidia
+            initContainers:
+              # The hostPath cache is created root-owned, but the ray-llm image runs as
+              # non-root (uid 1000), so it can't write the model download there. Make the
+              # mount writable before the engine starts. (Without this: HF PermissionError
+              # -> vLLM engine fails -> Serve deployment DEPLOY_FAILED.)
+              - name: fix-cache-perms
+                image: busybox:1.36
+                command: ["sh", "-c", "chmod -R 0777 /cache"]
+                securityContext:
+                  runAsUser: 0
+                volumeMounts:
+                  - name: model-cache
+                    mountPath: /cache
             containers:
               - name: ray-worker
                 image: rayproject/ray-llm:2.56.0.32d14d-extra-py312-cu130
