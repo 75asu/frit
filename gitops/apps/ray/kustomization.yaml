@@ -5,8 +5,6 @@ kind: Kustomization
 namespace: ray
 
 resources:
-  - namespace.yaml
-  - operator-helmrelease.yaml
   - rayservice.yaml
   - serve-service.yaml
 

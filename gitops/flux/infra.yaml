@@ -33,3 +33,7 @@ spec:
       kind: HelmRelease
       name: cloudnative-pg
       namespace: cnpg-system
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: kuberay-operator
+      namespace: ray

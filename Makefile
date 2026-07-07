@@ -84,8 +84,8 @@ sync: ## deliver gitops changes: commit first, then this pushes laptop->GitHub->
 	@git push origin main
 	@echo ">>> 2/3  GitHub -> VM clone -> in-cluster Gitea (the repo Flux watches)"
 	@$(ONVM) "sudo git -C /opt/frit pull --ff-only origin main && sudo git -C /opt/frit push gitea main"
-	@echo ">>> 3/3  reconcile Flux (source, then apps + infra)"
-	@$(ONVM) "sudo flux --kubeconfig /etc/rancher/k3s/k3s.yaml reconcile kustomization apps --with-source && sudo flux --kubeconfig /etc/rancher/k3s/k3s.yaml reconcile kustomization infra"
+	@echo ">>> 3/3  reconcile Flux (source + infra first, then apps -- apps dependsOn infra)"
+	@$(ONVM) "sudo flux --kubeconfig /etc/rancher/k3s/k3s.yaml reconcile kustomization infra --with-source && sudo flux --kubeconfig /etc/rancher/k3s/k3s.yaml reconcile kustomization apps"
 	@echo ">>> synced."
 
 # -- GPU checks + chaos (over SSH) --------------------------------------------

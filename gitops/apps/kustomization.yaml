@@ -7,7 +7,6 @@ resources:
   - sources/open-webui.yaml
   - sources/langfuse.yaml
   - sources/litellm.yaml
-  - sources/kuberay.yaml
   # Monitoring — Prometheus + Grafana + Alertmanager (kube-prometheus-stack)
   - monitoring/namespace.yaml
   - monitoring/helmrelease.yaml
@@ -19,8 +18,8 @@ resources:
   - vllm/hf-token-externalsecret.yaml
   - vllm/pdb.yaml
   - vllm/servicemonitor.yaml
-  # Ray Serve (KubeRay) — multi-model serving on one GPU.
-  # ray/ has its own kustomization: operator + RayService, with the Serve app injected
+  # Ray Serve — RayService serving path on one GPU (the KubeRay operator lives in infra).
+  # ray/ has its own kustomization: RayService + service, with the Serve app injected
   # from serveconfig.yaml. Edit models in ray/serveconfig.yaml.
   - ray
   # LiteLLM — dev multi-model gateway (Open WebUI -> LiteLLM -> vLLM), CNPG-backed

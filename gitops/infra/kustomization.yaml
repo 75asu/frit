@@ -6,6 +6,7 @@ resources:
   - sources/external-secrets.yaml
   - sources/nvidia.yaml
   - sources/cnpg.yaml
+  - sources/kuberay.yaml
   # CNPG — CloudNativePG operator (Postgres for the LiteLLM proxy DB)
   - cnpg/namespace.yaml
   - cnpg/helmrelease.yaml
@@ -19,3 +20,6 @@ resources:
   # GPU Operator — device plugin + DCGM exporter + containerd runtime config
   - gpu-operator/namespace.yaml
   - gpu-operator/helmrelease.yaml
+  # KubeRay operator — installs the Ray CRDs (RayService etc.); apps/ray applies the CR
+  - kuberay/namespace.yaml
+  - kuberay/helmrelease.yaml
