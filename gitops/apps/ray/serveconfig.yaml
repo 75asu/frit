@@ -1,14 +1,15 @@
 # Ray Serve app config (the models). Injected into RayService spec.serveConfigV2 by
 # kustomization.yaml. EDIT MODELS HERE. Add a model = another item under applications:
-# with a unique name + route_prefix; GPU fractions across models must sum to < 1.0
-# (this uses 0.3, leaving 0.7 for later models).
+# with a unique name + route_prefix; GPU fractions across models must sum to < 1.0.
 #
 # Two knobs: placement bundle GPU = Ray scheduling quota; gpu_memory_utilization =
-# vLLM memory budget. Kept aligned at 0.3.
+# vLLM memory budget. Kept aligned.
 #
-# Why 0.3 fits a 0.5B: bytes/token = 2 x layers x kv_heads x head_dim x dtype_bytes
-# = 2x24x2x64x2 ~= 12 KB/token. 0.3 x 16 GB ~= 4.8 GB, minus ~1 GB weights leaves plenty
-# for KV (~50 full 4k-token sequences) vs max_ongoing_requests 16.
+# Currently ONE model gets the whole T4 (0.9) so the benchmark measures the card, not a
+# self-imposed throttle. 0.9 x 16 GB ~= 14 GB, minus ~1 GB weights leaves ~13 GB for KV
+# (bytes/token = 2 x layers x kv_heads x head_dim x dtype_bytes = 2x24x2x64x2 ~= 12 KB),
+# so a much wider continuous batch (max_ongoing_requests 128). NOTE: at 0.9 this model
+# claims almost all the GPU -- other GPU apps won't schedule until it's scaled back down.
 applications:
   - name: qwen-05b
     route_prefix: /qwen-05b
@@ -20,22 +21,22 @@ applications:
             model_source: Qwen/Qwen2.5-0.5B-Instruct
           deployment_config:
             num_replicas: 1
-            max_ongoing_requests: 16     # continuous-batching width
+            max_ongoing_requests: 128    # continuous-batching width (wide: full-GPU KV budget)
           engine_kwargs:
             tensor_parallel_size: 1
             dtype: float16               # Turing has no bf16
-            gpu_memory_utilization: 0.3
+            gpu_memory_utilization: 0.9
             max_model_len: 4096
             enforce_eager: true          # CUDA graphs off = less memory (baseline)
             use_tqdm_on_load: false
           placement_group_config:
             bundles:
-              - GPU: 0.3
+              - GPU: 0.9
                 CPU: 2
                 memory: 8589934592
           runtime_env:
             env_vars:
-              VLLM_RAY_PER_WORKER_GPUS: "0.3"
+              VLLM_RAY_PER_WORKER_GPUS: "0.9"
               # HF's Xet downloader writes to HF_HOME/xet (a sibling of the mounted hub cache,
               # on the container's root-owned fs) and hits Permission denied as the non-root
               # ray user. Disable it so downloads use the classic path into the writable hub.
