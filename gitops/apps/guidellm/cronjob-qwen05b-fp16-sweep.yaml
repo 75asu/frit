@@ -55,7 +55,7 @@ spec:
                 - --profile
                 - kind=sweep,sweep_size=10          # sync + throughput + 8 interpolated constant rates
                 - --constraint
-                - kind=max_duration,seconds=20       # per strategy
+                - kind=max_duration,seconds=30       # per strategy (long enough for the high-concurrency throughput pass to drain + complete requests)
                 - --output
                 - kind=json,path=/results/qwen05b-fp16-sweep.json
               volumeMounts:

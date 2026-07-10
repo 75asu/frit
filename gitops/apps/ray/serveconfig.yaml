@@ -21,7 +21,7 @@ applications:
             model_source: Qwen/Qwen2.5-0.5B-Instruct
           deployment_config:
             num_replicas: 1
-            max_ongoing_requests: 128    # continuous-batching width (wide: full-GPU KV budget)
+            max_ongoing_requests: 64     # continuous-batching width (T4-appropriate; 128 was too wide to drain in the bench window)
           engine_kwargs:
             tensor_parallel_size: 1
             dtype: float16               # Turing has no bf16
