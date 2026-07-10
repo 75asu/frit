@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>frit — architecture</title>
+<meta name="description" content="frit architecture: GitOps source, GPU operator, Vault/ESO, CloudNativePG, the inference path, and the kube-prometheus observability stack on one Tesla T4." />
+<link rel="canonical" href="https://75asu.github.io/frit/architecture.html" />
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect x='12' y='12' width='76' height='76' rx='2' fill='none' stroke='%23ff6d2e' stroke-width='6'/><line x1='30' y1='38' x2='70' y2='38' stroke='%23ff6d2e' stroke-width='5'/><line x1='30' y1='54' x2='56' y2='54' stroke='%23ff6d2e' stroke-width='5'/><line x1='30' y1='70' x2='44' y2='70' stroke='%23ff6d2e' stroke-width='5'/></svg>" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=Azeret+Mono:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root { --bg:#121212; --panel:rgba(255,255,255,0.012); --text:#c8c8c8; --text2:#666; --text3:#484848; --hi:#f0f0f0; --acc:#ff6d2e; --border:rgba(255,255,255,0.08); }
+  [data-theme="light"] { --bg:#f8f6f3; --panel:rgba(0,0,0,0.015); --text:#444; --text2:#888; --text3:#b0b0b0; --hi:#111; --acc:#d44a10; --border:rgba(0,0,0,0.10); }
+  html { overflow-y:scroll; }
+  body { background:var(--bg); color:var(--text); font-family:'Azeret Mono','Fira Code',monospace; -webkit-font-smoothing:antialiased; line-height:1.6; }
+  .nav { display:flex; align-items:center; gap:22px; padding:16px max(24px, calc((100% - 1200px) / 2)); border-bottom:1px solid var(--border); position:sticky; top:0; background:var(--bg); z-index:50; }
+  .brand { font-family:'Chakra Petch',monospace; font-weight:700; font-size:22px; color:var(--hi); letter-spacing:-.02em; text-decoration:none; }
+  .brand:hover { color:var(--acc); }
+  .tabs { display:flex; gap:20px; flex:1; }
+  .tab { font-size:13px; color:var(--text2); text-decoration:none; padding-bottom:2px; border-bottom:1.5px solid transparent; }
+  .tab:hover { color:var(--text); } .tab.active { color:var(--acc); border-bottom-color:var(--acc); }
+  .tab.ext::after { content:' \2197'; color:var(--text3); }
+  .toggle { width:30px; height:30px; border-radius:50%; border:1.5px solid var(--text2); background:transparent; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:14px; color:var(--text2); }
+  .toggle:hover { border-color:var(--acc); color:var(--acc); }
+  [data-theme="dark"] .icon-sun{display:inline}[data-theme="dark"] .icon-moon{display:none}
+  [data-theme="light"] .icon-sun{display:none}[data-theme="light"] .icon-moon{display:inline}
+  main { padding:36px max(24px, calc((100% - 1200px) / 2)) 90px; }
+  .lbl { font-size:15px; font-weight:600; color:var(--text); letter-spacing:.14em; text-transform:uppercase; margin-bottom:20px; display:flex; align-items:center; gap:12px; }
+  .lbl::after { content:''; flex:1; height:1px; background:var(--border); }
+  .cap { color:var(--text2); font-size:14px; max-width:820px; margin-bottom:26px; }
+  .cap .acc { color:var(--acc); } .cap .hi { color:var(--text); }
+  .fig { border:1px solid var(--border); background:var(--panel); padding:24px; }
+  .fig img { width:100%; height:auto; display:block; }
+  .arch-light { display:none; } [data-theme="light"] .arch-dark { display:none; } [data-theme="light"] .arch-light { display:block; }
+  .foot { margin-top:14px; font-size:12px; color:var(--text3); } .foot a { color:inherit; } .foot a:hover { color:var(--acc); }
+</style>
+</head>
+<body>
+  <nav class="nav">
+    <a class="brand" href="./">frit</a>
+    <div class="tabs">
+      <a class="tab" href="./">overview</a>
+      <a class="tab" href="bench/">benchmarks</a>
+      <a class="tab active" href="architecture.html">architecture</a>
+      <a class="tab ext" href="https://github.com/75asu/frit" target="_blank" rel="noopener">github</a>
+    </div>
+    <button class="toggle" onclick="toggleTheme()" aria-label="Toggle theme"><span class="icon-sun">&#9728;</span><span class="icon-moon">&#9790;</span></button>
+  </nav>
+  <main>
+    <div class="lbl">architecture</div>
+    <p class="cap">
+      The whole stack on one <span class="hi">Tesla T4</span>, reconciled by <span class="acc">Flux</span>:
+      laptop &rarr; GitHub &rarr; in-cluster Gitea &rarr; Flux, the inference path
+      (<span class="acc">Open WebUI &rarr; LiteLLM &rarr; vLLM / Ray Serve</span>),
+      a CNPG-backed data tier, Vault/ESO secrets, and the kube-prometheus observability stack.
+    </p>
+    <div class="fig">
+      <img class="arch-dark"  src="architecture-dark.png"  alt="frit architecture on one Tesla T4: GitOps source, infra (GPU Operator, Vault, ESO, CloudNativePG), the inference path, data, and observability." />
+      <img class="arch-light" src="architecture-light.png" alt="frit architecture on one Tesla T4: GitOps source, infra (GPU Operator, Vault, ESO, CloudNativePG), the inference path, data, and observability." />
+    </div>
+    <div class="foot">source: <a href="https://github.com/75asu/frit/blob/main/docs/architecture.drawio">docs/architecture.drawio</a></div>
+  </main>
+<script>
+  const doc=document.documentElement; const st=localStorage.getItem('frit-theme'); if(st) doc.setAttribute('data-theme',st);
+  function toggleTheme(){ const n=doc.getAttribute('data-theme')==='dark'?'light':'dark'; doc.setAttribute('data-theme',n); localStorage.setItem('frit-theme',n); }
+</script>
+<script async src="https://scripts.simpleanalyticscdn.com/latest.js"></script>
+</body>
+</html>

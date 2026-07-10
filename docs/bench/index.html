@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>frit — inference benchmarks</title>
+<meta name="description" content="guidellm load-test results for models served on frit's GPU: TTFT, ITL, TPOT, throughput, with the full native report per run." />
+<link rel="canonical" href="https://75asu.github.io/frit/bench/" />
+<meta property="og:site_name" content="frit" />
+<meta property="og:title" content="frit — inference benchmarks" />
+<meta property="og:description" content="guidellm load-test results for models served on frit's GPU: TTFT, ITL, TPOT, throughput, with the full native report per run." />
+<meta property="og:url" content="https://75asu.github.io/frit/bench/" />
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect x='12' y='12' width='76' height='76' rx='2' fill='none' stroke='%23ff6d2e' stroke-width='6'/><line x1='30' y1='38' x2='70' y2='38' stroke='%23ff6d2e' stroke-width='5'/><line x1='30' y1='54' x2='56' y2='54' stroke='%23ff6d2e' stroke-width='5'/><line x1='30' y1='70' x2='44' y2='70' stroke='%23ff6d2e' stroke-width='5'/></svg>" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=Azeret+Mono:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg:#121212; --text:#c8c8c8; --text2:#666666; --text3:#383838; --hi:#f0f0f0;
+    --acc:#ff6d2e; --acc-dim:rgba(255,109,46,0.12); --acc-mid:rgba(255,109,46,0.35);
+    --green:#7ec699; --green-dim:rgba(126,198,153,0.10); --green-mid:rgba(126,198,153,0.45);
+    --border:rgba(255,255,255,0.07); --row:rgba(255,255,255,0.018);
+  }
+  [data-theme="light"] {
+    --bg:#f8f6f3; --text:#444; --text2:#888; --text3:#c0c0c0; --hi:#111;
+    --acc:#d44a10; --acc-dim:rgba(212,74,16,0.08); --acc-mid:rgba(212,74,16,0.25);
+    --green:#3f8f5f; --green-dim:rgba(63,143,95,0.08); --green-mid:rgba(63,143,95,0.4);
+    --border:rgba(0,0,0,0.09); --row:rgba(0,0,0,0.02);
+  }
+  html { overflow-y: scroll; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: 'Azeret Mono','Fira Code',monospace;
+    -webkit-font-smoothing: antialiased; line-height: 1.6;
+    transition: background .3s, color .3s;
+  }
+
+  /* ── top nav ── */
+  .nav {
+    display: flex; align-items: center; gap: 22px;
+    padding: 16px max(24px, calc((100% - 1200px) / 2));
+    border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; background: var(--bg); z-index: 50;
+  }
+  .brand {
+    font-family: 'Chakra Petch', monospace; font-weight: 700;
+    font-size: 22px; color: var(--hi); letter-spacing: -.02em; text-decoration: none;
+  }
+  .brand:hover { color: var(--acc); }
+  .tabs { display: flex; gap: 20px; flex: 1; }
+  .tab {
+    font-size: 13px; color: var(--text2); text-decoration: none;
+    padding-bottom: 2px; border-bottom: 1.5px solid transparent; transition: color .15s;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--acc); border-bottom-color: var(--acc); }
+  .tab.ext::after { content: ' \2197'; color: var(--text3); }
+  .toggle {
+    width: 30px; height: 30px; border-radius: 50%; border: 1.5px solid var(--text2);
+    background: transparent; cursor: pointer; display: flex; align-items: center;
+    justify-content: center; font-size: 14px; color: var(--text2);
+    transition: border-color .2s, color .2s;
+  }
+  .toggle:hover { border-color: var(--acc); color: var(--acc); }
+  [data-theme="dark"] .icon-sun { display: inline; } [data-theme="dark"] .icon-moon { display: none; }
+  [data-theme="light"] .icon-sun { display: none; } [data-theme="light"] .icon-moon { display: inline; }
+
+  /* ── page ── */
+  main { padding: 40px max(24px, calc((100% - 1200px) / 2)) 80px; }
+  .section-lbl {
+    font-size: 15px; font-weight: 600; color: var(--text); letter-spacing: .14em;
+    text-transform: uppercase; margin-bottom: 14px; display: flex; align-items: center; gap: 12px;
+  }
+  .section-lbl::after { content:''; flex:1; height:1px; background: var(--border); }
+  .lede { color: var(--text2); font-size: 14px; max-width: 760px; margin-bottom: 22px; line-height: 1.85; }
+  .lede .hi { color: var(--text); } .lede .acc { color: var(--acc); }
+
+  .note {
+    border: 1px solid var(--acc-mid); background: var(--acc-dim);
+    padding: 12px 16px; margin-bottom: 26px; font-size: 12.5px; color: var(--text);
+    line-height: 1.8; max-width: 900px;
+  }
+  .note b { color: var(--hi); font-weight: 600; }
+
+  .scroll { overflow-x: auto; border: 1px solid var(--border); }
+  table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+  thead th {
+    text-align: right; padding: 11px 12px; background: var(--row); color: var(--text2);
+    font-weight: 600; letter-spacing: .04em; white-space: nowrap; border-bottom: 1px solid var(--border);
+  }
+  thead th.l, tbody td.l { text-align: left; }
+  tbody td { padding: 12px; border-bottom: 1px solid var(--border); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover td { background: var(--row); }
+  .model { color: var(--acc); font-weight: 600; }
+  .unit { color: var(--text3); font-size: 11px; }
+  .tag {
+    display: inline-block; padding: 2px 8px; border: 1px solid var(--border);
+    color: var(--text); font-size: 11px; letter-spacing: .04em;
+  }
+  .tag.prec { color: var(--acc); border-color: var(--acc-mid); background: var(--acc-dim); }
+  .report-link {
+    color: var(--green); text-decoration: none; border: 1px solid var(--green-mid);
+    background: var(--green-dim); padding: 3px 9px; font-size: 11px; letter-spacing: .06em; text-transform: uppercase;
+  }
+  .report-link:hover { background: var(--green-mid); color: var(--bg); }
+  .json-link { color: var(--text2); text-decoration: none; font-size: 11px; margin-left: 8px; }
+  .json-link:hover { color: var(--acc); }
+  .err { color: var(--acc); }
+  .empty { color: var(--text2); text-align: center; padding: 2.5rem; }
+  footer { color: var(--text3); font-size: 12px; margin-top: 22px; letter-spacing: .02em; }
+  footer a { color: var(--text2); }
+  @media (max-width: 640px) { .tabs { display: none; } }
+</style>
+</head>
+<body>
+  <nav class="nav">
+    <a class="brand" href="../">frit</a>
+    <div class="tabs">
+      <a class="tab" href="../">overview</a>
+      <a class="tab active" href="./">benchmarks</a>
+      <a class="tab" href="../architecture.html">architecture</a>
+      <a class="tab ext" href="https://github.com/75asu/frit" target="_blank" rel="noopener">github</a>
+    </div>
+    <button class="toggle" onclick="toggleTheme()" aria-label="Toggle theme">
+      <span class="icon-sun">&#9728;</span><span class="icon-moon">&#9790;</span>
+    </button>
+  </nav>
+
+  <main>
+    <div class="section-lbl">inference benchmarks</div>
+    <p class="lede">
+      <span class="hi">guidellm</span> load tests against models served on frit's GPU. Each row is one
+      <span class="hi">model &times; precision &times; profile</span> combination, open its
+      <span class="acc">report</span> for the full guidellm dashboard (latency distributions, token stats, SLOs).
+    </p>
+
+    <div class="note">
+      <b>Profile</b> is the load shape: <span class="tag">synchronous</span> = one request at a time (latency floor),
+      <span class="tag">throughput</span> saturates the GPU (ceiling), <span class="tag">sweep</span> traces the curve between.
+      Open a <b>report</b> for the full dashboard: latency distributions (TTFT / ITL / TPOT), token stats, throughput, and SLOs.
+    </div>
+
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th class="l">Model</th><th>Precision</th><th>GPU</th><th class="l">Profile</th><th>Concurrency</th><th class="l">Report</th>
+          </tr>
+        </thead>
+        <tbody id="rows"><tr><td class="empty" colspan="6">loading…</td></tr></tbody>
+      </table>
+    </div>
+    <footer id="foot"></footer>
+  </main>
+
+<script>
+  const html = document.documentElement;
+  const saved = localStorage.getItem('frit-theme');
+  if (saved) html.setAttribute('data-theme', saved);
+  function toggleTheme() {
+    const next = html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    html.setAttribute('data-theme', next);
+    localStorage.setItem('frit-theme', next);
+  }
+
+  const ms = v => v == null ? "—" : `${v.toLocaleString()}<span class="unit"> ms</span>`;
+  const sec = v => v == null ? "—" : `${v}<span class="unit"> s</span>`;
+  const n = v => v == null ? "—" : v.toLocaleString();
+
+  fetch("data.json").then(r => r.json()).then(rows => {
+    const tb = document.getElementById("rows");
+    if (!rows.length) { tb.innerHTML = '<tr><td class="empty" colspan="6">no runs yet</td></tr>'; return; }
+    tb.innerHTML = rows.map(r => `
+      <tr>
+        <td class="l model">${r.model ?? "—"}</td>
+        <td><span class="tag prec">${r.precision ?? "—"}</span></td>
+        <td>${r.gpu ?? "—"}</td>
+        <td class="l">${r.profile ?? "—"}</td>
+        <td>${r.strategies > 1 ? r.strategies + " pts" : n(r.max_concurrency)}</td>
+        <td class="l"><a class="report-link" href="report.html?run=${encodeURIComponent(r.run)}">open report</a><a class="json-link" href="${r.raw}">json</a></td>
+      </tr>`).join("");
+    document.getElementById("foot").innerHTML =
+      `${rows.length} run(s) · guidellm ${rows[0].guidellm_version ?? ""} · results in <a href="https://github.com/75asu/frit/tree/main/docs/bench/results">docs/bench/results</a>`;
+  }).catch(e => {
+    document.getElementById("rows").innerHTML = '<tr><td class="empty" colspan="6">failed to load data.json</td></tr>';
+    console.error(e);
+  });
+</script>
+<script async src="https://scripts.simpleanalyticscdn.com/latest.js"></script>
+</body>
+</html>

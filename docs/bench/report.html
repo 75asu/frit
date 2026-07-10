@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>frit — benchmark report</title>
+<meta name="robots" content="noindex" />
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect x='12' y='12' width='76' height='76' rx='2' fill='none' stroke='%23ff6d2e' stroke-width='6'/><line x1='30' y1='38' x2='70' y2='38' stroke='%23ff6d2e' stroke-width='5'/><line x1='30' y1='54' x2='56' y2='54' stroke='%23ff6d2e' stroke-width='5'/><line x1='30' y1='70' x2='44' y2='70' stroke='%23ff6d2e' stroke-width='5'/></svg>" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=Azeret+Mono:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uplot@1.6.31/dist/uPlot.min.css" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg:#121212; --panel:rgba(255,255,255,0.02); --text:#c8c8c8; --text2:#666; --text3:#484848; --hi:#f0f0f0;
+    --acc:#ff6d2e; --acc-dim:rgba(255,109,46,0.12); --acc-mid:rgba(255,109,46,0.35);
+    --blue:#5fa8d3; --purple:#b28bd6; --green:#7ec699; --green-mid:rgba(126,198,153,0.45);
+    --red:#e0685f; --border:rgba(255,255,255,0.08); --grid:rgba(255,255,255,0.07);
+  }
+  [data-theme="light"] {
+    --bg:#f8f6f3; --panel:rgba(0,0,0,0.02); --text:#444; --text2:#888; --text3:#b0b0b0; --hi:#111;
+    --acc:#d44a10; --acc-dim:rgba(212,74,16,0.08); --acc-mid:rgba(212,74,16,0.25);
+    --blue:#2b7fb0; --purple:#7b52a8; --green:#3f8f5f; --green-mid:rgba(63,143,95,0.4);
+    --red:#c0392b; --border:rgba(0,0,0,0.10); --grid:rgba(0,0,0,0.07);
+  }
+  html { overflow-y:scroll; }
+  body { background: var(--bg); color: var(--text); font-family:'Azeret Mono','Fira Code',monospace; -webkit-font-smoothing:antialiased; line-height:1.6; }
+  .nav { display:flex; align-items:center; gap:22px; padding:16px max(24px, calc((100% - 1200px) / 2)); border-bottom:1px solid var(--border); position:sticky; top:0; background:var(--bg); z-index:50; }
+  .brand { font-family:'Chakra Petch',monospace; font-weight:700; font-size:22px; color:var(--hi); letter-spacing:-.02em; text-decoration:none; }
+  .brand:hover { color:var(--acc); }
+  .tabs { display:flex; gap:20px; flex:1; }
+  .tab { font-size:13px; color:var(--text2); text-decoration:none; padding-bottom:2px; border-bottom:1.5px solid transparent; }
+  .tab:hover { color:var(--text); } .tab.active { color:var(--acc); border-bottom-color:var(--acc); }
+  .tab.ext::after { content:' \2197'; color:var(--text3); }
+  .toggle { width:30px; height:30px; border-radius:50%; border:1.5px solid var(--text2); background:transparent; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:14px; color:var(--text2); }
+  .toggle:hover { border-color:var(--acc); color:var(--acc); }
+  [data-theme="dark"] .icon-sun{display:inline}[data-theme="dark"] .icon-moon{display:none}
+  [data-theme="light"] .icon-sun{display:none}[data-theme="light"] .icon-moon{display:inline}
+
+  main { padding: 30px max(24px, calc((100% - 1200px) / 2)) 90px; }
+  .crumb { display:flex; align-items:baseline; gap:16px; flex-wrap:wrap; margin-bottom:8px; }
+  .back { font-size:13px; color:var(--text2); text-decoration:none; } .back:hover{ color:var(--acc); }
+  .meta { font-size:12px; color:var(--text2); margin-left:auto; } .meta a{ color:var(--text2); } .meta a:hover{ color:var(--acc); }
+  h1 { font-family:'Chakra Petch',monospace; font-weight:600; font-size:clamp(26px,4vw,38px); color:var(--hi); letter-spacing:-.01em; margin-bottom:4px; }
+  h1 .prec { color:var(--acc); }
+  .subhead { color:var(--text2); font-size:13px; margin-bottom:30px; }
+
+  .lbl { font-size:15px; font-weight:600; color:var(--text); letter-spacing:.14em; text-transform:uppercase; margin:40px 0 20px; display:flex; align-items:center; gap:12px; }
+  .lbl small { font-weight:400; color:var(--text3); text-transform:none; letter-spacing:0; }
+  .lbl::after { content:''; flex:1; height:1px; background:var(--border); }
+
+  .tiles { display:grid; grid-template-columns:repeat(8,1fr); gap:1px; background:var(--border); border:1px solid var(--border); }
+  .tile { background:var(--bg); padding:15px 17px; min-width:0; }
+  .tile .k { font-size:11px; color:var(--text2); letter-spacing:.05em; text-transform:uppercase; margin-bottom:6px; }
+  .tile .v { font-size:23px; color:var(--hi); font-weight:500; font-variant-numeric:tabular-nums; }
+  .u { color:var(--text3); font-size:12px; margin-left:2px; }
+
+  @media (max-width:1000px){ .tiles{grid-template-columns:repeat(4,1fr)} }
+  @media (max-width:560px){ .tiles{grid-template-columns:repeat(2,1fr)} }
+
+  .chart-box { border:1px solid var(--border); background:var(--panel); padding:14px 14px 6px; }
+  .chart-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); gap:14px; }
+  .chart-title { font-size:12px; color:var(--text2); letter-spacing:.04em; margin-bottom:8px; padding-left:2px; }
+  .uplot { font-family:'Azeret Mono',monospace !important; }
+  .u-legend { font-size:11px !important; }
+
+  .scroll { overflow-x:auto; border:1px solid var(--border); }
+  table { border-collapse:collapse; width:100%; font-size:12px; }
+  th { text-align:right; padding:9px 11px; background:var(--panel); color:var(--text2); font-weight:600; letter-spacing:.02em; border-bottom:1px solid var(--border); white-space:nowrap; }
+  th.l, td.l { text-align:left; }
+  td { padding:9px 11px; border-bottom:1px solid var(--border); text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  tr:last-child td { border-bottom:none; }
+  tbody tr:hover td { background:var(--panel); }
+  td.l { color:var(--hi); font-weight:500; }
+  .p95 { color:var(--acc); }
+
+  .slo { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
+  @media (max-width:760px){ .slo { grid-template-columns:1fr; } }
+  .slo-item { border:1px solid var(--border); padding:12px 16px; font-size:12px; min-width:0; }
+  .slo-item .k { color:var(--text2); text-transform:uppercase; letter-spacing:.05em; font-size:11px; }
+  .slo-item .row { display:flex; justify-content:space-between; margin-top:7px; align-items:baseline; }
+  .slo-item .val { font-size:19px; font-variant-numeric:tabular-nums; }
+  .pass { color:var(--green); } .fail { color:var(--red); }
+  .badge { font-size:10px; letter-spacing:.1em; text-transform:uppercase; padding:2px 7px; border:1px solid; }
+  .badge.pass { border-color:var(--green-mid); } .badge.fail { border-color:var(--red); }
+  .note2 { border:1px dashed var(--border); padding:12px 16px; font-size:12.5px; color:var(--text2); }
+  .note2 b { color:var(--hi); }
+  .footnote { color:var(--text3); font-size:11px; margin-top:10px; }
+  .err { color:var(--text2); padding:2rem 0; }
+</style>
+</head>
+<body>
+  <nav class="nav">
+    <a class="brand" href="../">frit</a>
+    <div class="tabs">
+      <a class="tab" href="../">overview</a>
+      <a class="tab active" href="./">benchmarks</a>
+      <a class="tab" href="../architecture.html">architecture</a>
+      <a class="tab ext" href="https://github.com/75asu/frit" target="_blank" rel="noopener">github</a>
+    </div>
+    <button class="toggle" onclick="toggleTheme()" aria-label="Toggle theme"><span class="icon-sun">&#9728;</span><span class="icon-moon">&#9790;</span></button>
+  </nav>
+
+  <main id="main">
+    <div class="crumb"><a class="back" href="./">&larr; all benchmarks</a><div class="meta" id="meta"></div></div>
+    <h1 id="title">report</h1>
+    <div class="subhead" id="subhead"></div>
+    <div id="body"><div class="err">loading…</div></div>
+  </main>
+
+<script src="https://cdn.jsdelivr.net/npm/uplot@1.6.31/dist/uPlot.iife.min.js"></script>
+<script>
+  const doc = document.documentElement;
+  const st = localStorage.getItem('frit-theme'); if (st) doc.setAttribute('data-theme', st);
+  function toggleTheme(){ const n=doc.getAttribute('data-theme')==='dark'?'light':'dark'; doc.setAttribute('data-theme',n); localStorage.setItem('frit-theme',n); location.reload(); }
+
+  const run=(new URLSearchParams(location.search).get('run')||'').replace(/[^a-zA-Z0-9._-]/g,'');
+  const fmt=(v,d=1)=>v==null||Number.isNaN(v)?"—":Number(v).toLocaleString(undefined,{maximumFractionDigits:d});
+  const S=(m,n,k,s='successful')=>{try{const x=m[n][s][k];return x==null?null:x;}catch{return null;}};
+  const P=(m,n,p,s='successful')=>{try{const x=m[n][s].percentiles[p];return x==null?null:x;}catch{return null;}};
+  const cv=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const PS=['p001','p01','p05','p10','p25','p50','p75','p90','p95','p99','p999'];
+  const PLABEL={p001:'p0.1',p01:'p1',p05:'p5',p10:'p10',p25:'p25',p50:'p50',p75:'p75',p90:'p90',p95:'p95',p99:'p99',p999:'p99.9'};
+
+  // metric definitions for the charts: percentile distribution (single-run) + vs-RPS curves (sweep)
+  const METRICS=[
+    {n:'Time to first token', u:'ms', k:'time_to_first_token_ms', d:1, c:'--acc'},
+    {n:'Inter-token latency', u:'ms', k:'inter_token_latency_ms', d:2, c:'--blue'},
+    {n:'Time per output token', u:'ms', k:'time_per_output_token_ms', d:2, c:'--purple'},
+    {n:'Request latency', u:'s', k:'request_latency', d:2, c:'--green'},
+    {n:'Output throughput', u:'tok/s', k:'output_tokens_per_second', d:1, c:'--acc'},
+  ];
+
+  function uplot(el, title, xLabel, xs, seriesDefs, logY){
+    if (typeof uPlot === 'undefined') { el.innerHTML='<div class="footnote">chart lib unavailable</div>'; return; }
+    const wrap=document.createElement('div'); wrap.className='chart-box';
+    const t=document.createElement('div'); t.className='chart-title'; t.textContent=title; wrap.appendChild(t);
+    const holder=document.createElement('div'); wrap.appendChild(holder); el.appendChild(wrap);
+    const data=[xs, ...seriesDefs.map(s=>s.ys)];
+    const axisStroke=cv('--text3'), gridStroke=cv('--grid'), font='11px Azeret Mono';
+    const opts={
+      width: holder.clientWidth||480, height: 230,
+      cursor:{points:{size:5}},
+      scales:{ x:{time:false}, y: logY?{distr:3}:{} },
+      legend:{ live:false },
+      axes:[
+        {stroke:axisStroke, grid:{stroke:gridStroke,width:1}, ticks:{stroke:gridStroke}, font, label:xLabel, labelSize:26, labelFont:'11px Azeret Mono'},
+        {stroke:axisStroke, grid:{stroke:gridStroke,width:1}, ticks:{stroke:gridStroke}, font, size:56},
+      ],
+      series:[{label:xLabel}, ...seriesDefs.map(s=>({label:s.label, stroke:cv(s.c||'--acc'), width:2, dash:s.dash||[], points:{show:s.points!==false,size:4}}))],
+    };
+    const u=new uPlot(opts, data, holder);
+    const ro=new ResizeObserver(()=>u.setSize({width:holder.clientWidth||480,height:230})); ro.observe(holder);
+  }
+
+  Promise.all([
+    fetch('data.json').then(r=>r.json()).catch(()=>[]),
+    fetch(`results/${run}.json`).then(r=>r.ok?r.json():Promise.reject()).catch(()=>null),
+  ]).then(([rows,rep])=>{
+    const meta=(rows||[]).find(x=>x.run===run)||{};
+    if(!rep){document.getElementById('body').innerHTML='<div class="err">report data not found</div>';return;}
+    const benches=rep.benchmarks||[]; const b=benches[0], m=b.metrics, cfg=b.config;
+    const sweep = benches.length>1;
+    const model=meta.model||cfg.backend?.model||run, prec=meta.precision||'—', gpu=meta.gpu||'—';
+    const profile=meta.profile||cfg.profile?.kind||'—', conc=meta.max_concurrency??cfg.strategy?.max_concurrency;
+    const rps=S(m,'requests_per_second','mean');
+
+    document.getElementById('title').innerHTML=`${model} <span class="prec">${prec}</span>`;
+    document.getElementById('subhead').textContent = sweep
+      ? `${gpu} · sweep · ${benches.length} strategies · ${fmt(b.duration,0)}s each`
+      : `${gpu} · ${profile} · concurrency ${conc??'—'} · ${fmt(b.duration,0)}s`;
+    document.getElementById('meta').innerHTML=`guidellm ${rep.metadata?.guidellm_version??''} · <a href="${meta.raw||`results/${run}.json`}">raw json</a>`;
+    document.title=`frit — ${model} ${prec} ${profile}`;
+
+    // WORKLOAD tiles: a sweep's headline is its ceiling + operating point (not the single-request
+    // floor of benchmarks[0]); a single run's headline is its request accounting.
+    let tiles;
+    if (sweep) {
+      const rate = bb => S(bb.metrics,'requests_per_second','mean') || 0;
+      const peakRps = Math.max(...benches.map(rate));
+      const peakOtps = Math.max(...benches.map(bb => S(bb.metrics,'output_tokens_per_second','mean') || 0));
+      const satB = benches.reduce((a,bb) => rate(bb) > rate(a) ? bb : a);   // highest-rate strategy = saturation
+      const underSlo = benches.filter(bb => { const q = P(bb.metrics,'time_to_first_token_ms','p99'); return q != null && q <= 200; }).map(rate);
+      const sloRps = underSlo.length ? Math.max(...underSlo) : 0;
+      tiles = [
+        ['strategies', fmt(benches.length,0)],
+        ['peak req/s', fmt(peakRps,2)+'<span class="u">mean</span>'],
+        ['peak out tok/s', fmt(peakOtps,0)],
+        ['floor ttft', fmt(P(m,'time_to_first_token_ms','p50'),0)+'<span class="u">ms p50</span>'],
+        ['slo req/s', (sloRps>0?fmt(sloRps,2):'—')+'<span class="u">≤200ms</span>'],
+        ['sat ttft', fmt(S(satB.metrics,'time_to_first_token_ms','mean'),0)+'<span class="u">ms</span>'],
+        ['prompt tok', fmt(S(m,'prompt_token_count','median'),0)+'<span class="u">med</span>'],
+        ['output tok', fmt(S(m,'output_token_count','median'),0)+'<span class="u">med</span>'],
+      ];
+    } else {
+      const okc=S(m,'time_to_first_token_ms','count')??0, errc=S(m,'time_to_first_token_ms','count','errored')??0, incc=S(m,'time_to_first_token_ms','count','incomplete')??0;
+      tiles=[['requests',fmt(okc,0)],['errors',fmt(errc,0)],['incomplete',fmt(incc,0)],
+        ['prompt tok',fmt(S(m,'prompt_token_count','median'),0)+'<span class="u">med</span>'],
+        ['output tok',fmt(S(m,'output_token_count','median'),0)+'<span class="u">med</span>'],
+        ['output tok/s',fmt(S(m,'output_tokens_per_second','mean'),1)+'<span class="u">mean</span>'],
+        ['total tok/s',fmt(S(m,'tokens_per_second','mean'),1)+'<span class="u">mean</span>'],
+        ['req/s',fmt(rps,2)+'<span class="u">mean</span>']];
+    }
+
+    // full percentile latency table (all percentiles)
+    const latMetrics=[['TTFT','ms','time_to_first_token_ms',1],['TTFOT','ms','time_to_first_output_token_ms',1],
+      ['ITL','ms','inter_token_latency_ms',2],['TPOT','ms','time_per_output_token_ms',2],['Req latency','s','request_latency',2]];
+    const pcols=PS.map(p=>`<th class="${p==='p95'?'p95':''}">${PLABEL[p]}</th>`).join('');
+    const latRows=latMetrics.map(([nm,u,k,d])=>`<tr><td class="l">${nm} <span class="u">${u}</span></td>
+      <td>${fmt(S(m,k,'min'),d)}</td>${PS.map(p=>`<td class="${p==='p95'?'p95':''}">${fmt(P(m,k,p),d)}</td>`).join('')}
+      <td>${fmt(S(m,k,'max'),d)}</td><td>${fmt(S(m,k,'mean'),d)}</td><td>${fmt(S(m,k,'std_dev'),d)}</td></tr>`).join('');
+
+    const tokRows=[['Prompt','prompt_token_count'],['Output','output_token_count'],['Total','total_token_count']].map(([nm,k])=>
+      `<tr><td class="l">${nm} tokens</td><td>${fmt(S(m,k,'median'),0)}</td><td>${fmt(S(m,k,'mean'),1)}</td><td>${fmt(S(m,k,'std_dev'),2)}</td><td>${fmt(S(m,k,'min'),0)}</td><td>${fmt(S(m,k,'max'),0)}</td><td>${fmt(S(m,k,'count'),0)}</td><td>${fmt(S(m,k,'total_sum'),0)}</td></tr>`).join('');
+    const tpRows=[['Requests / s','requests_per_second',2],['Output tokens / s','output_tokens_per_second',1],['Total tokens / s','tokens_per_second',1],['Prompt tokens / s','prompt_tokens_per_second',1]].map(([nm,k,d])=>
+      `<tr><td class="l">${nm}</td><td>${fmt(S(m,k,'mean'),d)}</td><td>${fmt(S(m,k,'std_dev'),d)}</td><td>${fmt(S(m,k,'min'),d)}</td><td>${fmt(P(m,k,'p50'),d)}</td><td>${fmt(P(m,k,'p90'),d)}</td><td>${fmt(P(m,k,'p95'),d)}</td><td>${fmt(P(m,k,'p99'),d)}</td><td>${fmt(S(m,k,'max'),d)}</td></tr>`).join('');
+
+    const le=(a,t)=>a<=t;
+    const sloItem=(k,v,unit,target)=>{const ok=v!=null&&le(v,target);return `<div class="slo-item"><div class="k">${k} p99 · chat SLO ≤${target}${unit}</div><div class="row"><span class="val ${ok?'pass':'fail'}">${fmt(v,1)}<span class="u"> ${unit}</span></span><span class="badge ${ok?'pass':'fail'}">${ok?'within':'over'}</span></div></div>`;};
+
+    document.getElementById('body').innerHTML=`
+      <div class="lbl">workload</div>
+      <div class="tiles">${tiles.map(([k,v])=>`<div class="tile"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('')}</div>
+
+      <div class="lbl">charts</div>
+      <div id="charts"></div>
+
+      <div class="lbl">latency</div>
+      <div class="scroll"><table><thead><tr><th class="l">Metric</th><th>min</th>${pcols}<th>max</th><th>mean</th><th>std</th></tr></thead><tbody>${latRows}</tbody></table></div>
+
+      <div class="lbl">token counts</div>
+      <div class="scroll"><table><thead><tr><th class="l">Metric</th><th>median</th><th>mean</th><th>std</th><th>min</th><th>max</th><th>count</th><th>total</th></tr></thead><tbody>${tokRows}</tbody></table></div>
+
+      <div class="lbl">throughput</div>
+      <div class="scroll"><table><thead><tr><th class="l">Metric</th><th>mean</th><th>std</th><th>min</th><th>p50</th><th>p90</th><th>p95</th><th>p99</th><th>max</th></tr></thead><tbody>${tpRows}</tbody></table></div>
+      <div class="footnote">total tok/s is sampled per streaming iteration, so its max is a burst outlier; the mean is the true aggregate rate.</div>
+
+      <div class="lbl">SLO check</div>
+      <div class="slo">${sloItem('TTFT',P(m,'time_to_first_token_ms','p99'),'ms',200)}${sloItem('ITL',P(m,'inter_token_latency_ms','p99'),'ms',50)}${sloItem('TPOT',P(m,'time_per_output_token_ms','p99'),'ms',50)}</div>
+      <div class="footnote">Reference targets from guidellm's SLO guide (real-time chat tier). Context, not a frit pass/fail.</div>
+    `;
+
+    // ── charts ──
+    const cwrap=document.getElementById('charts');
+    try {
+      if (sweep) {
+        // vs-RPS: one chart per metric, lines p50/p90/p95/p99/mean over request-rate.
+        // Sort strategies by achieved rate so the line goes low->high (guidellm emits
+        // them as sync, throughput, then interpolated rates -- not in x order).
+        const sorted=[...benches].sort((a,b)=>(S(a.metrics,'requests_per_second','mean')||0)-(S(b.metrics,'requests_per_second','mean')||0));
+        const xs=sorted.map(bb=>S(bb.metrics,'requests_per_second','mean')).map(v=>v==null?0:v);
+        const grid=document.createElement('div'); grid.className='chart-grid'; cwrap.appendChild(grid);
+        METRICS.forEach(mt=>{
+          const cell=document.createElement('div');
+          const S2=(bb,k,st='successful')=>{try{return bb.metrics[mt.k][st][k];}catch{return null;}};
+          const Pp=(bb,p)=>{try{return bb.metrics[mt.k].successful.percentiles[p];}catch{return null;}};
+          const defs=[
+            {label:'p50', ys:sorted.map(bb=>Pp(bb,'p50')), c:'--text2', dash:[4,3], points:false},
+            {label:'p90', ys:sorted.map(bb=>Pp(bb,'p90')), c:'--green', dash:[4,3], points:false},
+            {label:'p95', ys:sorted.map(bb=>Pp(bb,'p95')), c:'--acc', dash:[4,3], points:false},
+            {label:'p99', ys:sorted.map(bb=>Pp(bb,'p99')), c:'--red', dash:[4,3], points:false},
+            {label:'mean', ys:sorted.map(bb=>S2(bb,'mean')), c:'--blue'},
+          ];
+          uplot(cell, `${mt.n} (${mt.u}) vs request rate`, 'req/s', xs, defs, false);
+          grid.appendChild(cell);
+        });
+      } else {
+        // single run: latency percentile-distribution (log-y), TTFT/ITL/TPOT
+        const xs=PS.map(p=>({p001:0.1,p01:1,p05:5,p10:10,p25:25,p50:50,p75:75,p90:90,p95:95,p99:99,p999:99.9}[p]));
+        const defs=METRICS.slice(0,3).map(mt=>({label:mt.n, ys:PS.map(p=>P(m,mt.k,p)), c:mt.c}));
+        uplot(cwrap, 'Latency percentile distribution (ms, log scale)', 'percentile', xs, defs, true);
+        const note=document.createElement('div'); note.className='note2'; note.style.marginTop='14px';
+        note.innerHTML='<b>Load curves (metric vs request-rate)</b> populate automatically when the run is a <b>sweep</b> (many rates). This is a single synchronous run (one rate), so only the percentile distribution is shown. Run a <code>sweep</code> profile to get the full guidellm-style curves.';
+        cwrap.appendChild(note);
+      }
+    } catch(e){ console.error(e); cwrap.innerHTML='<div class="footnote">chart render failed (see console)</div>'; }
+  });
+</script>
+<script async src="https://scripts.simpleanalyticscdn.com/latest.js"></script>
+</body>
+</html>

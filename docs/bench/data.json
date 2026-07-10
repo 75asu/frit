@@ -1,0 +1,112 @@
+[
+  {
+    "run": "qwen05b-fp16-sweep",
+    "model": "qwen-05b",
+    "gpu": "T4",
+    "precision": "fp16",
+    "profile": "sweep",
+    "strategies": 10,
+    "max_concurrency": null,
+    "duration_s": 60.0,
+    "requests_ok": 19,
+    "requests_err": 0,
+    "ttft_ms": {
+      "median": 68.72,
+      "mean": 69.5,
+      "p50": 68.72,
+      "p90": 70.98,
+      "p95": 79.05,
+      "p99": 79.05
+    },
+    "itl_ms": {
+      "median": 24.18,
+      "mean": 24.29,
+      "p50": 24.18,
+      "p90": 25.34,
+      "p95": 25.55,
+      "p99": 25.55
+    },
+    "tpot_ms": {
+      "median": 24.53,
+      "mean": 24.64,
+      "p50": 24.53,
+      "p90": 25.69,
+      "p95": 25.89,
+      "p99": 25.89
+    },
+    "req_latency_s": {
+      "median": 3.14,
+      "mean": 3.15,
+      "p50": 3.14,
+      "p90": 3.29,
+      "p95": 3.31,
+      "p99": 3.31
+    },
+    "throughput": {
+      "req_per_s": 0.32,
+      "output_tok_per_s": 40.61,
+      "total_tok_per_s": 131.05
+    },
+    "tokens": {
+      "prompt_median": 285.0,
+      "output_median": 128.0
+    },
+    "guidellm_version": "0.7.1",
+    "raw": "results/qwen05b-fp16-sweep.json"
+  },
+  {
+    "run": "qwen05b-fp16-sync",
+    "model": "qwen-05b",
+    "gpu": "T4",
+    "precision": "fp16",
+    "profile": "synchronous",
+    "strategies": 1,
+    "max_concurrency": 1,
+    "duration_s": 60.0,
+    "requests_ok": 20,
+    "requests_err": 0,
+    "ttft_ms": {
+      "median": 69.53,
+      "mean": 80.91,
+      "p50": 69.53,
+      "p90": 71.25,
+      "p95": 71.52,
+      "p99": 300.44
+    },
+    "itl_ms": {
+      "median": 23.84,
+      "mean": 23.89,
+      "p50": 23.84,
+      "p90": 24.78,
+      "p95": 24.78,
+      "p99": 24.93
+    },
+    "tpot_ms": {
+      "median": 24.22,
+      "mean": 24.34,
+      "p50": 24.22,
+      "p90": 25.13,
+      "p95": 25.29,
+      "p99": 25.99
+    },
+    "req_latency_s": {
+      "median": 3.1,
+      "mean": 3.12,
+      "p50": 3.1,
+      "p90": 3.22,
+      "p95": 3.24,
+      "p99": 3.33
+    },
+    "throughput": {
+      "req_per_s": 0.32,
+      "output_tok_per_s": 41.27,
+      "total_tok_per_s": 133.16
+    },
+    "tokens": {
+      "prompt_median": 285.0,
+      "output_median": 128.0
+    },
+    "guidellm_version": "0.7.1",
+    "raw": "results/qwen05b-fp16-sync.json"
+  }
+]
