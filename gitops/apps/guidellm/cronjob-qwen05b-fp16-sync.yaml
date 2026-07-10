@@ -48,7 +48,9 @@ spec:
                 - guidellm
                 - run                # v0.7.1: benchmark command is `run` (`benchmark` is a group for from-file)
                 - --backend
-                - kind=openai_http,target=http://frit-serve-serve-svc.ray.svc.cluster.local:8000/qwen-05b,model=qwen-05b
+                - kind=openai_http,target=http://frit-serve-serve-svc.ray.svc.cluster.local:8000/qwen-05b,model=qwen-05b,validate_backend=false
+                # validate_backend=false: skip guidellm's /health pre-flight (Ray Serve
+                # doesn't expose /health under the route prefix; the /v1 API works fine)
                 - --tokenizer
                 - kind=huggingface_auto,model=Qwen/Qwen2.5-0.5B-Instruct
                 - --data
