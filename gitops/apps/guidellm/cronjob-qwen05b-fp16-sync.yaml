@@ -39,7 +39,7 @@ spec:
             fsGroup: 0
           containers:
             - name: guidellm
-              image: ghcr.io/vllm-project/guidellm:latest
+              image: ghcr.io/vllm-project/guidellm:v0.7.1-amd64   # pinned; :latest is arm64-only single-arch (exec format error on amd64)
               workingDir: /tmp
               env:
                 - name: HF_HOME
