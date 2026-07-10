@@ -33,3 +33,6 @@ resources:
   - langfuse/namespace.yaml
   - langfuse/helmrelease.yaml
   - langfuse/externalsecret.yaml
+  # guidellm — inference load-testing harness. One Job per benchmark run,
+  # results to a shared PVC. Own kustomization (like ray/).
+  - guidellm

@@ -1,0 +1,14 @@
+# Persistent home for benchmark artifacts (guidellm json/csv per run). Survives
+# the Job pods and VM restarts (k3s local-path = on the node's boot disk). The
+# site-generator (later) reads from here to build the public Benchmarks page.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: bench-results
+  namespace: bench
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 2Gi

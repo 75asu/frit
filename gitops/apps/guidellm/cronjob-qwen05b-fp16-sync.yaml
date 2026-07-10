@@ -1,0 +1,68 @@
+# A benchmark "run recipe" as a SUSPENDED CronJob. Flux owns this template; it
+# NEVER fires on its own (suspend: true). You trigger a run on demand with:
+#
+#   kubectl -n bench create job qwen05b-fp16-sync-r1 \
+#     --from=cronjob/bench-qwen05b-fp16-sync
+#
+# Each trigger stamps out a fresh Job from this jobTemplate. To add a new config
+# (precision/profile/model/tokens), add a sibling suspended CronJob.
+#
+# This recipe: qwen-05b (fp16) on the Ray Serve endpoint, synchronous profile
+# (one-at-a-time = latency floor) for 20s. Writes json to the shared PVC + a
+# summary to the pod logs.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: bench-qwen05b-fp16-sync
+  namespace: bench
+  labels:
+    app.kubernetes.io/name: guidellm
+    bench.frit/model: qwen-05b
+    bench.frit/precision: fp16
+    bench.frit/profile: synchronous
+spec:
+  schedule: "0 0 1 1 *"        # dummy (never effectively fires); suspended anyway
+  suspend: true                # <- the key: Flux keeps it, it only runs when triggered
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 0          # don't retry: surface errors immediately
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: guidellm
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsUser: 0        # write freely to the local-path PVC + HF cache (lab)
+            fsGroup: 0
+          containers:
+            - name: guidellm
+              image: ghcr.io/vllm-project/guidellm:latest
+              workingDir: /tmp
+              env:
+                - name: HF_HOME
+                  value: /tmp/hf
+              command:
+                - guidellm
+                - benchmark
+                - --backend
+                - kind=openai_http,target=http://frit-serve-serve-svc.ray.svc.cluster.local:8000/qwen-05b,model=qwen-05b
+                - --tokenizer
+                - kind=huggingface_auto,model=Qwen/Qwen2.5-0.5B-Instruct
+                - --data
+                - kind=synthetic_text,prompt_tokens=256,output_tokens=128
+                - --profile
+                - kind=synchronous
+                - --constraint
+                - kind=max_duration,seconds=20
+                - --output
+                - kind=json,path=/results/qwen05b-fp16-sync.json
+              volumeMounts:
+                - name: results
+                  mountPath: /results
+          volumes:
+            - name: results
+              persistentVolumeClaim:
+                claimName: bench-results

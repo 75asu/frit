@@ -1,0 +1,9 @@
+# Benchmark namespace. The guidellm load generator lives here (the permanent
+# control-plane side); models under test live in `ray`/`vllm` and are reached
+# cross-namespace by their service FQDN.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: bench
+  labels:
+    app.kubernetes.io/part-of: frit-bench
