@@ -46,7 +46,7 @@ spec:
                   value: /tmp/hf
               command:
                 - guidellm
-                - benchmark
+                - run                # v0.7.1: benchmark command is `run` (`benchmark` is a group for from-file)
                 - --backend
                 - kind=openai_http,target=http://frit-serve-serve-svc.ray.svc.cluster.local:8000/qwen-05b,model=qwen-05b
                 - --tokenizer
