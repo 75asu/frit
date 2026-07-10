@@ -58,7 +58,7 @@ spec:
                 - --profile
                 - kind=synchronous
                 - --constraint
-                - kind=max_duration,seconds=20
+                - kind=max_duration,seconds=60       # guidellm's documented window; uniform across all frit runs for comparable + stable percentiles
                 - --output
                 - kind=json,path=/results/qwen05b-fp16-sync.json
               volumeMounts:
