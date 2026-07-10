@@ -6,3 +6,4 @@ resources:
   # Benchmark run recipes (suspended CronJobs, triggered on demand via
   # `kubectl create job --from=cronjob/...`). Add a sibling recipe per config.
   - cronjob-qwen05b-fp16-sync.yaml
+  - cronjob-qwen05b-fp16-sweep.yaml
