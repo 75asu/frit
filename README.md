@@ -76,4 +76,4 @@ Run `make help` for the full command list.
 
 ---
 
-MIT License -- by [@75asu](https://75asu.pages.dev)
+Apache-2.0 -- by [@75asu](https://75asu.pages.dev)
