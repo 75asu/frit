@@ -13,7 +13,7 @@ ONVM = set -a; [ -f .env ] && . ./.env; set +a; \
            "$${TARGET_USER}@$$(bin/vm.sh ip)"
 
 .PHONY: help up down ssh status inventory vm-start connect gpu k3s bootstrap cluster teardown \
-        kubeconfig tunnel tunnel-gitea grafana grafana-pass prometheus webui unseal kubectl sync run metrics chaos chaos-memory chaos-load clean diagram og-image
+        kubeconfig tunnel tunnel-gitea grafana grafana-pass prometheus webui unseal kubectl kube-install kube-uninstall sync run metrics chaos chaos-memory chaos-load clean diagram og-image
 
 help: ## show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -79,6 +79,21 @@ unseal: ## unseal Vault (Shamir re-seals on every VM restart) + kick ESO to re-s
 	@$(ONVM) "sudo k3s kubectl -n vault exec vault-0 -- vault operator unseal '$$VAULT_UNSEAL_KEY' | grep -i '^Sealed' && sudo k3s kubectl -n external-secrets rollout restart deploy/external-secrets >/dev/null && echo 'ESO restarted -- secrets will re-sync'"
 kubectl: ## kubectl via the fetched kubeconfig (needs make tunnel). Usage: make kubectl CMD="get pods -A"
 	@$(KUBECTL) $(CMD)
+
+KCTX ?= frit
+kube-install: ## merge frit's kubeconfig into ~/.kube/config as context 'frit' (for plain kubectl + kubie). Needs 'make tunnel' for connectivity.
+	@test -f $(KUBECONFIG) || { echo "no kubeconfig.yaml -- run 'make up' (or 'make kubeconfig') first"; exit 1; }
+	@mkdir -p $$HOME/.kube
+	@if [ -f $$HOME/.kube/config ]; then cp $$HOME/.kube/config $$HOME/.kube/config.pre-frit.bak; echo ">>> backed up ~/.kube/config -> ~/.kube/config.pre-frit.bak"; fi
+	@sed -E 's/(^ *(- )?name): default *$$/\1: $(KCTX)/; s/(^ *current-context): default *$$/\1: $(KCTX)/; s/(^ *cluster): default *$$/\1: $(KCTX)/; s/(^ *user): default *$$/\1: $(KCTX)/' $(KUBECONFIG) > /tmp/frit-kctx.yaml
+	@KUBECONFIG=$$HOME/.kube/config:/tmp/frit-kctx.yaml kubectl config view --flatten > /tmp/kube-merged && mv /tmp/kube-merged $$HOME/.kube/config && chmod 600 $$HOME/.kube/config && rm -f /tmp/frit-kctx.yaml
+	@echo ">>> context '$(KCTX)' added. Start the tunnel (keep it open):  make tunnel"
+	@echo ">>> then use it directly:  kubectl --context $(KCTX) get pods -A   |   kubie ctx $(KCTX)"
+kube-uninstall: ## remove the 'frit' context/cluster/user from ~/.kube/config (backup stays at ~/.kube/config.pre-frit.bak)
+	@kubectl --kubeconfig="$$HOME/.kube/config" config delete-context $(KCTX) || true
+	@kubectl --kubeconfig="$$HOME/.kube/config" config delete-cluster $(KCTX) || true
+	@kubectl --kubeconfig="$$HOME/.kube/config" config delete-user $(KCTX) || true
+	@echo ">>> removed '$(KCTX)' from ~/.kube/config"
 sync: ## deliver gitops changes: commit first, then this pushes laptop->GitHub->Gitea + forces Flux to reconcile
 	@echo ">>> 1/3  laptop -> GitHub (origin)"
 	@git push origin main

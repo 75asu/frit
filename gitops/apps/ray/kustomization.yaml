@@ -20,7 +20,7 @@ resources:
 configMapGenerator:
   - name: frit-serve-serveconfig
     files:
-      - serveConfigV2=model-configs/qwen-05b.yaml       # flip to model-configs/mistral-7b.yaml AFTER pre-warm
+      - serveConfigV2=model-configs/mistral-7b.yaml     # ACTIVE: mistral (weights pre-warmed 2026-07-27); qwen kept at model-configs/qwen-05b.yaml
 
 generatorOptions:
   disableNameSuffixHash: true
