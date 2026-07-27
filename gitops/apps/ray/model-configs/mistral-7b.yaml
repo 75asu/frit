@@ -35,3 +35,7 @@ applications:
             env_vars:
               VLLM_RAY_PER_WORKER_GPUS: "0.9"
               HF_HUB_DISABLE_XET: "1"
+              # T4 / Turing sm_75: the default FlashInfer attention backend fails at prefill
+              # (BatchPrefillWithPagedKVCache -> CUDA "invalid argument"; needs sm_80+). Force
+              # xFormers, which supports Turing. (TORCH_SDPA is the fallback if xFormers is absent.)
+              VLLM_ATTENTION_BACKEND: "XFORMERS"
