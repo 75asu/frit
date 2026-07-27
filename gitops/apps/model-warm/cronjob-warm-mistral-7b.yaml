@@ -1,0 +1,53 @@
+---
+# Model weight PRE-WARMER , downloads HF weights into the shared hostPath cache
+# (/var/lib/frit-models = the Ray worker's HF hub) BEFORE serving, so serve-init never
+# fights a cold/flaky HF download (Harsh's pain: connection breaks, many reruns).
+#   - hf_transfer  = fast Rust parallel-chunk downloader
+#   - huggingface-cli download RESUMES on a broken connection (no full restart)
+# Suspended CronJob (never auto-fires); trigger a pull with:
+#   kubectl -n ray create job warm-mistral-7b --from=cronjob/model-warm-mistral-7b
+#   kubectl -n ray logs -f job/warm-mistral-7b
+# One CronJob per model (mirrors the guidellm per-config pattern); add a sibling per new model.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: model-warm-mistral-7b
+  namespace: ray
+spec:
+  schedule: "0 0 1 1 *"        # once a year; irrelevant, suspend:true means it never fires
+  suspend: true
+  jobTemplate:
+    spec:
+      backoffLimit: 6           # retry a flaky download several times
+      ttlSecondsAfterFinished: 3600
+      template:
+        spec:
+          restartPolicy: OnFailure
+          securityContext:
+            runAsUser: 0          # hostPath cache is root-owned
+          containers:
+            - name: warm
+              image: python:3.12-slim
+              env:
+                - name: MODEL
+                  value: TheBloke/Mistral-7B-Instruct-v0.2-AWQ
+                - name: HF_HUB_ENABLE_HF_TRANSFER
+                  value: "1"
+                - name: HF_HUB_DISABLE_XET
+                  value: "1"
+              command: ["sh", "-c"]
+              args:
+                - |
+                  set -eu
+                  pip install -q "huggingface_hub[hf_transfer]"
+                  echo "==> downloading $MODEL into /hub (hf_transfer on, resumable)"
+                  huggingface-cli download "$MODEL" --cache-dir /hub
+                  echo "==> done; weights cached at /hub (= /var/lib/frit-models on the node)"
+              volumeMounts:
+                - name: model-cache
+                  mountPath: /hub
+          volumes:
+            - name: model-cache
+              hostPath:
+                path: /var/lib/frit-models
+                type: DirectoryOrCreate

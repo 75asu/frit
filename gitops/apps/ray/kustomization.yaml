@@ -8,12 +8,19 @@ resources:
   - rayservice.yaml
   - serve-service.yaml
 
-# Load serveconfig.yaml as a value and inject it into the RayService's spec.serveConfigV2,
-# so models are edited as real YAML instead of an inline string.
+# ONE file per model in model-configs/ (canonical config + tuning history, NEVER clobbered).
+# The ACTIVE model is whichever file is injected below as serveConfigV2 , switch by changing
+# this ONE line (auditable in git = "which model was live for this benchmark"). Benchmark ONE
+# model at a time for clean numbers; the co-host demo (all models + LiteLLM routing) will be
+# its own model-configs/cohost.yaml. Available: model-configs/qwen-05b.yaml, model-configs/mistral-7b.yaml.
+#
+# ORDER when onboarding a new model: keep the CURRENT model active, `make sync` (deploys its
+# pre-warm CronJob), TRIGGER the pre-warm + wait, THEN flip this line to the new model + sync
+# (so Ray loads from the warm cache instead of fighting a cold HF download).
 configMapGenerator:
   - name: frit-serve-serveconfig
     files:
-      - serveConfigV2=serveconfig.yaml
+      - serveConfigV2=model-configs/qwen-05b.yaml       # flip to model-configs/mistral-7b.yaml AFTER pre-warm
 
 generatorOptions:
   disableNameSuffixHash: true

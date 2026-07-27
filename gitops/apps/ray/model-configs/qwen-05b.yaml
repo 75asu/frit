@@ -1,0 +1,33 @@
+# frit MODEL 1 (tiny) , Qwen2.5-0.5B-Instruct, FP16. Public (no HF token). ~1 GB weights.
+# Memory-trivial on the T4, so it stresses the SCHEDULER / continuous-batching / concurrency
+# ceiling, NOT the KV limit. Baseline captured 2026-07 (guidellm Report #1).
+# This is a complete serveConfigV2 doc for ONE model. Never edit another model's file;
+# config + tuning history for qwen lives HERE. Activate via ray/kustomization.yaml.
+applications:
+  - name: qwen-05b
+    route_prefix: /qwen-05b
+    import_path: ray.serve.llm:build_openai_app
+    args:
+      llm_configs:
+        - model_loading_config:
+            model_id: qwen-05b
+            model_source: Qwen/Qwen2.5-0.5B-Instruct
+          deployment_config:
+            num_replicas: 1
+            max_ongoing_requests: 64     # continuous-batching width (128 was too wide to drain in the bench window)
+          engine_kwargs:
+            tensor_parallel_size: 1
+            dtype: float16               # Turing has no bf16
+            gpu_memory_utilization: 0.9
+            max_model_len: 4096
+            enforce_eager: true          # CUDA graphs off = less memory (baseline)
+            use_tqdm_on_load: false
+          placement_group_config:
+            bundles:
+              - GPU: 0.9
+                CPU: 2
+                memory: 8589934592
+          runtime_env:
+            env_vars:
+              VLLM_RAY_PER_WORKER_GPUS: "0.9"
+              HF_HUB_DISABLE_XET: "1"     # Xet writes to a root-owned sibling dir -> perm-denied as non-root ray user

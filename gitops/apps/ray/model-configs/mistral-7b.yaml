@@ -1,0 +1,37 @@
+# frit MODEL 2 (mid) , Mistral-7B-Instruct v0.2 AWQ INT4. Non-gated (no HF token, like qwen);
+# SECOND architecture (Qwen -> Mistral) for the article's "patterns generalize" claim.
+# ~4-5 GB AWQ weights; 0.9 x 16 GB ~= 14 GB leaves ~9 GB KV , this is the model that finally
+# stresses the 16 GB KV limit, where the book's KV tricks (M-B / M-E) start to matter.
+# SOLO active for a clean baseline (co-host is a separate config).
+# T4 GOTCHA: quantization MUST be `awq` (Turing sm_75); `awq_marlin` needs sm_80+ and will fail.
+# Weights pre-warmed via cronjob/model-warm-mistral-7b (hf_transfer + resume) so serve-init
+# doesn't fight a cold HF download. Config + tuning history for mistral lives HERE.
+applications:
+  - name: mistral-7b
+    route_prefix: /mistral-7b
+    import_path: ray.serve.llm:build_openai_app
+    args:
+      llm_configs:
+        - model_loading_config:
+            model_id: mistral-7b
+            model_source: TheBloke/Mistral-7B-Instruct-v0.2-AWQ
+          deployment_config:
+            num_replicas: 1
+            max_ongoing_requests: 16     # 7B is far heavier than the 0.5B; start narrow, widen after baseline
+          engine_kwargs:
+            tensor_parallel_size: 1
+            quantization: awq            # Turing sm_75 -> awq kernel (NOT awq_marlin)
+            dtype: float16               # Turing has no bf16
+            gpu_memory_utilization: 0.9
+            max_model_len: 4096
+            enforce_eager: true          # CUDA graphs off = less memory (baseline)
+            use_tqdm_on_load: false
+          placement_group_config:
+            bundles:
+              - GPU: 0.9
+                CPU: 2
+                memory: 8589934592
+          runtime_env:
+            env_vars:
+              VLLM_RAY_PER_WORKER_GPUS: "0.9"
+              HF_HUB_DISABLE_XET: "1"

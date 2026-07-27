@@ -19,9 +19,12 @@ resources:
   - vllm/pdb.yaml
   - vllm/servicemonitor.yaml
   # Ray Serve — RayService serving path on one GPU (the KubeRay operator lives in infra).
-  # ray/ has its own kustomization: RayService + service, with the Serve app injected
-  # from serveconfig.yaml. Edit models in ray/serveconfig.yaml.
+  # ray/ has its own kustomization: RayService + service. Models = ONE file per model in
+  # ray/model-configs/; the active one is injected as serveConfigV2 (switch in ray/kustomization.yaml).
   - ray
+  # Model weight pre-warmers — suspended CronJobs (one per model) that download HF weights into
+  # the shared hostPath cache with hf_transfer + resume, off the serve path. Manual-trigger.
+  - model-warm
   # LiteLLM — dev multi-model gateway (Open WebUI -> LiteLLM -> vLLM), CNPG-backed
   - litellm/namespace.yaml
   - litellm/cluster.yaml
