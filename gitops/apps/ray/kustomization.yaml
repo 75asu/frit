@@ -8,11 +8,12 @@ resources:
   - rayservice.yaml
   - serve-service.yaml
 
-# ONE file per model in model-configs/ (canonical config + tuning history, NEVER clobbered).
-# The ACTIVE model is whichever file is injected below as serveConfigV2 , switch by changing
-# this ONE line (auditable in git = "which model was live for this benchmark"). Benchmark ONE
-# model at a time for clean numbers; the co-host demo (all models + LiteLLM routing) will be
-# its own model-configs/cohost.yaml. Available: model-configs/qwen-05b.yaml, model-configs/mistral-7b.yaml.
+# ONE file per BENCHMARKED VARIANT in model-configs/ (self-documenting; the tree mirrors docs/bench/).
+# The ACTIVE config is whichever file is injected below as serveConfigV2 , switch by changing this
+# ONE line (auditable in git = "which config was live for this benchmark"). Benchmark ONE config at
+# a time for clean numbers; the co-host demo (all models + LiteLLM routing) will be its own
+# model-configs/cohost.yaml. Available: qwen-05b.yaml + mistral-7b-{awq-marlin,awq-int4,fp8,fp16}.yaml
+# , see model-configs/README.md for the full precision/tuning comparison + numbers.
 #
 # ORDER when onboarding a new model: keep the CURRENT model active, `make sync` (deploys its
 # pre-warm CronJob), TRIGGER the pre-warm + wait, THEN flip this line to the new model + sync
@@ -20,7 +21,7 @@ resources:
 configMapGenerator:
   - name: frit-serve-serveconfig
     files:
-      - serveConfigV2=model-configs/mistral-7b.yaml     # ACTIVE: mistral (weights pre-warmed 2026-07-27); qwen kept at model-configs/qwen-05b.yaml
+      - serveConfigV2=model-configs/mistral-7b-awq-marlin.yaml   # ACTIVE: mistral AWQ-Marlin tuned (fastest). Switch to any model-configs/*.yaml
 
 generatorOptions:
   disableNameSuffixHash: true

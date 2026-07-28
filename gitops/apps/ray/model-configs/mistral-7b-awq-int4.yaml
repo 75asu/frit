@@ -1,0 +1,35 @@
+# frit MODEL 2 , Mistral-7B-Instruct v0.2 , AWQ INT4, TURING-SAFE BASELINE (the "before" config).
+# Plain awq kernel + enforce_eager (CUDA graphs OFF) + TORCH_SDPA override , the defensive settings the T4
+# (sm_75) needed; kept as the L4 baseline to measure the tuning delta. Un-cripple it -> mistral-7b-awq-marlin.yaml.
+# Bench mistral7b-awq-sweep (single L4, 256/128): 34.5 tok/s single-stream, TTFT 269ms, ITL 27.2ms, KV 15.5 GiB.
+# Only one mistral variant is active at a time (../kustomization.yaml serveConfigV2). See README.md.
+applications:
+  - name: mistral-7b
+    route_prefix: /mistral-7b
+    import_path: ray.serve.llm:build_openai_app
+    args:
+      llm_configs:
+        - model_loading_config:
+            model_id: mistral-7b
+            model_source: TheBloke/Mistral-7B-Instruct-v0.2-AWQ   # AWQ INT4 checkpoint (non-gated)
+          deployment_config:
+            num_replicas: 1
+            max_ongoing_requests: 16
+          engine_kwargs:
+            tensor_parallel_size: 1
+            quantization: awq            # plain AWQ kernel (Turing-safe; Marlin needs sm_80+)
+            dtype: float16
+            gpu_memory_utilization: 0.9
+            max_model_len: 4096
+            enforce_eager: true          # CUDA graphs OFF (Turing-era defensive default)
+            use_tqdm_on_load: false
+          placement_group_config:
+            bundles:
+              - GPU: 0.9
+                CPU: 2
+                memory: 8589934592
+          runtime_env:
+            env_vars:
+              VLLM_RAY_PER_WORKER_GPUS: "0.9"
+              HF_HUB_DISABLE_XET: "1"
+              VLLM_ATTENTION_BACKEND: "TORCH_SDPA"   # Turing-safe fallback (not a vLLM-v1 backend; drop on Ada)

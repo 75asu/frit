@@ -1,0 +1,35 @@
+# frit MODEL 2 , Mistral-7B-Instruct v0.2 , FP8 dynamic (the L4 SWEET SPOT; Ada-only).
+# vLLM dynamic fp8 -> Ada sm_89 fp8 tensor cores (an A100 CANNOT do fp8). 2x compression, better accuracy than INT4.
+# Bench mistral7b-fp8-sweep (single L4, 256/128): 29.8 tok/s single-stream, TTFT 118ms, ITL 32.9ms, KV 11.9 GiB.
+# ITL sits ~2x int4 / ~half fp16 , dead-on the weight-bytes-per-token ratio. Quality-vs-speed sweet spot.
+# Only one mistral variant is active at a time (../kustomization.yaml serveConfigV2). See README.md.
+applications:
+  - name: mistral-7b
+    route_prefix: /mistral-7b
+    import_path: ray.serve.llm:build_openai_app
+    args:
+      llm_configs:
+        - model_loading_config:
+            model_id: mistral-7b
+            model_source: mistralai/Mistral-7B-Instruct-v0.2   # base fp16 weights, quantized to fp8 at load (non-gated)
+          deployment_config:
+            num_replicas: 1
+            max_ongoing_requests: 16
+          engine_kwargs:
+            tensor_parallel_size: 1
+            quantization: fp8            # vLLM dynamic fp8 -> Ada sm_89 fp8 tensor cores (~7GB weights)
+            dtype: float16
+            gpu_memory_utilization: 0.9
+            max_model_len: 4096
+            enforce_eager: false         # CUDA graphs ON
+            use_tqdm_on_load: false
+          placement_group_config:
+            bundles:
+              - GPU: 0.9
+                CPU: 2
+                memory: 8589934592
+          runtime_env:
+            env_vars:
+              VLLM_RAY_PER_WORKER_GPUS: "0.9"
+              HF_HUB_DISABLE_XET: "1"
+              # native attention (FlashInfer/FLASH_ATTN) on Ada sm_89

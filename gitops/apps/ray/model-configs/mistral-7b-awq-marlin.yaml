@@ -1,0 +1,35 @@
+# frit MODEL 2 , Mistral-7B-Instruct v0.2 , AWQ INT4 + Marlin kernel (L4-TUNED). ★ ACTIVE default.
+# The un-crippled Ada config: Marlin INT4 GEMM (needs sm_80+), CUDA graphs ON, native FLASH_ATTN.
+# Bench mistral7b-l4tuned-sweep (single L4, 256/128): 57.3 tok/s single-stream, TTFT 117ms, ITL 16.7ms, KV 15.0 GiB. FASTEST.
+# One mistral variant is active at a time (../kustomization.yaml serveConfigV2). model_id/route are identical
+# across variants so the guidellm sweep recipe is variant-agnostic. Full comparison: see README.md.
+applications:
+  - name: mistral-7b
+    route_prefix: /mistral-7b
+    import_path: ray.serve.llm:build_openai_app
+    args:
+      llm_configs:
+        - model_loading_config:
+            model_id: mistral-7b
+            model_source: TheBloke/Mistral-7B-Instruct-v0.2-AWQ   # AWQ INT4 checkpoint (non-gated)
+          deployment_config:
+            num_replicas: 1
+            max_ongoing_requests: 16
+          engine_kwargs:
+            tensor_parallel_size: 1
+            quantization: awq_marlin     # L4 sm_89: Marlin AWQ kernel (faster than plain awq; needs sm_80+)
+            dtype: float16
+            gpu_memory_utilization: 0.9
+            max_model_len: 4096
+            enforce_eager: false         # CUDA graphs ON (24GB headroom) -> lower latency / higher tput
+            use_tqdm_on_load: false
+          placement_group_config:
+            bundles:
+              - GPU: 0.9
+                CPU: 2
+                memory: 8589934592
+          runtime_env:
+            env_vars:
+              VLLM_RAY_PER_WORKER_GPUS: "0.9"
+              HF_HUB_DISABLE_XET: "1"
+              # native attention (FlashInfer/FLASH_ATTN) on Ada sm_89 , no override
