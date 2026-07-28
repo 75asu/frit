@@ -1,4 +1,4 @@
-# frit MODEL 2 (mid) , Mistral-7B-Instruct v0.2 AWQ INT4. Non-gated (no HF token, like qwen);
+# frit MODEL 2 (mid) , Mistral-7B-Instruct v0.2 , precision sweep (int4-awq / fp16 / fp8). Non-gated;
 # SECOND architecture (Qwen -> Mistral) for the article's "patterns generalize" claim.
 # ~4-5 GB AWQ weights; 0.9 x 16 GB ~= 14 GB leaves ~9 GB KV , this is the model that finally
 # stresses the 16 GB KV limit, where the book's KV tricks (M-B / M-E) start to matter.
@@ -16,14 +16,14 @@ applications:
       llm_configs:
         - model_loading_config:
             model_id: mistral-7b
-            model_source: TheBloke/Mistral-7B-Instruct-v0.2-AWQ
+            model_source: mistralai/Mistral-7B-Instruct-v0.2   # base UNQUANTIZED fp16 (non-gated)
           deployment_config:
             num_replicas: 1
             max_ongoing_requests: 16     # 7B is far heavier than the 0.5B; start narrow, widen after baseline
           engine_kwargs:
             tensor_parallel_size: 1
-            quantization: awq_marlin     # L4 sm_89: Marlin AWQ kernel (faster than plain awq; needs sm_80+)
-            dtype: float16               # AWQ compute dtype (bf16 also OK on Ada; kept fp16 to isolate the delta)
+            # fp16 variant: NO quantization (full-precision weights, ~14GB on the 24GB L4)
+            dtype: float16
             gpu_memory_utilization: 0.9
             max_model_len: 4096
             enforce_eager: false         # L4-tuned: CUDA graphs ON (24GB headroom) -> lower latency / higher tput
