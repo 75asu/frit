@@ -1,6 +1,8 @@
 models/
 *.gguf
 .env
+.env.*
+!.env.example
 vendor/
 kubeconfig.yaml
 ansible/inventory/hosts.yaml
