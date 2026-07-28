@@ -22,7 +22,7 @@ applications:
             max_ongoing_requests: 16     # 7B is far heavier than the 0.5B; start narrow, widen after baseline
           engine_kwargs:
             tensor_parallel_size: 1
-            # fp16 variant: NO quantization (full-precision weights, ~14GB on the 24GB L4)
+            quantization: fp8            # vLLM dynamic fp8 -> L4 Ada sm_89 fp8 tensor cores (~7GB weights)
             dtype: float16
             gpu_memory_utilization: 0.9
             max_model_len: 4096
