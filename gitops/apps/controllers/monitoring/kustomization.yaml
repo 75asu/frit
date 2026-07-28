@@ -1,0 +1,9 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# kube-prometheus-stack = the Prometheus Operator, which INSTALLS the ServiceMonitor / PodMonitor /
+# PrometheusRule CRDs. Lives in the controllers layer so apps-configs (which contains the CRs that
+# consume those CRDs, e.g. vllm/servicemonitor.yaml) can dependsOn it and be guaranteed the CRDs exist.
+resources:
+  - prometheus-community-source.yaml
+  - namespace.yaml
+  - helmrelease.yaml

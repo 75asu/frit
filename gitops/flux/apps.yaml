@@ -20,3 +20,4 @@ spec:
     name: frit
   dependsOn:
     - name: infra
+    - name: apps-controllers

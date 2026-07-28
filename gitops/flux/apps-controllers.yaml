@@ -1,0 +1,27 @@
+---
+# Flux Kustomization — apps-controllers layer (wave between infra and apps).
+# Installs the apps-tier operators / CRD-providing charts (kube-prometheus-stack, which brings the
+# ServiceMonitor/PodMonitor/PrometheusRule CRDs). wait:true + the HelmRelease health check gate the
+# apps layer until the CRDs exist, so apps' ServiceMonitor CRs pass Flux's dry-run on a cold boot.
+# Pattern adopted from kubernetes/fravity-spine (controllers -> configs).
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: apps-controllers
+  namespace: flux-system
+spec:
+  interval: 10m
+  path: ./gitops/apps/controllers
+  prune: true
+  wait: true
+  timeout: 10m
+  sourceRef:
+    kind: GitRepository
+    name: frit
+  dependsOn:
+    - name: infra
+  healthChecks:
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: kube-prometheus-stack
+      namespace: monitoring
