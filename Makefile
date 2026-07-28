@@ -13,7 +13,8 @@ ONVM = set -a; [ -f .env ] && . ./.env; set +a; \
            "$${TARGET_USER}@$$(bin/vm.sh ip)"
 
 .PHONY: help up down ssh status inventory vm-start connect gpu k3s bootstrap cluster teardown \
-        kubeconfig tunnel tunnel-gitea grafana grafana-pass prometheus webui unseal kubectl kube-install kube-uninstall sync run metrics chaos chaos-memory chaos-load clean diagram og-image
+        kubeconfig tunnel tunnel-gitea grafana grafana-pass prometheus webui unseal kubectl kube-install kube-uninstall sync run metrics chaos chaos-memory chaos-load clean diagram og-image \
+        use-t4 use-l4 active save stop-all status-all labs cluster-firewall cluster-join
 
 help: ## show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -80,8 +81,38 @@ unseal: ## unseal Vault (Shamir re-seals on every VM restart) + kick ESO to re-s
 kubectl: ## kubectl via the fetched kubeconfig (needs make tunnel). Usage: make kubectl CMD="get pods -A"
 	@$(KUBECTL) $(CMD)
 
-KCTX ?= frit
-kube-install: ## merge frit's kubeconfig into ~/.kube/config as context 'frit' (for plain kubectl + kubie). Needs 'make tunnel' for connectivity.
+# ── Multi-machine (labs) ── .env is the ACTIVE machine's config; per-machine sources are
+# .env.t4 (asu-sandbox / T4) and .env.l4 (asu-l4 / L4). Each source carries its own coords
+# + its own Vault creds (Vault is per-cluster). Switch active with use-t4/use-l4; after an `up`
+# mints fresh Vault creds, run `save` to persist .env back to its source. stop-all/status-all
+# act on BOTH regardless of active. Kube context is per-machine: frit-t4 / frit-l4.
+use-t4: ## switch active machine -> T4 (asu-sandbox). Then: make up | down | tunnel
+	@test -f .env.t4 || { echo "no .env.t4 -- create it first (cp .env .env.t4; add LAB=t4)"; exit 1; }
+	@cp .env.t4 .env && echo ">>> active = T4 (asu-sandbox)"
+use-l4: ## switch active machine -> L4 (asu-l4). Then: make up | down | tunnel
+	@test -f .env.l4 || { echo "no .env.l4 -- create it first (cp .env .env.l4; set GCP_VM_NAME=asu-l4, GCP_ZONE=asia-south1-b, LAB=l4; clear VAULT_* + TARGET_HOST)"; exit 1; }
+	@cp .env.l4 .env && echo ">>> active = L4 (asu-l4)"
+active: ## show which machine .env currently targets
+	@echo "active LAB=$(LAB)  VM=$(GCP_VM_NAME)  zone=$(GCP_ZONE)"
+save: ## persist the active .env back to its per-machine source (.env.$(LAB)) -- run after `up` mints Vault creds
+	@test -n "$(LAB)" || { echo "no LAB= in .env; add LAB=t4 or LAB=l4 so save knows the target file"; exit 1; }
+	@cp .env .env.$(LAB) && echo ">>> saved active .env -> .env.$(LAB) (Vault creds + coords persisted for next start)"
+labs: ## list the per-machine env files present
+	@for f in .env.t4 .env.l4; do [ -f $$f ] && echo "  $$f: $$(sed -nE 's/^GCP_VM_NAME=//p' $$f) @ $$(sed -nE 's/^GCP_ZONE=//p' $$f)"; done
+stop-all: ## END OF SESSION: stop BOTH VMs (billing stops; disks + clusters persist)
+	@for f in .env.t4 .env.l4; do [ -f $$f ] && { echo ">>> stopping ($$f):"; ENV_FILE=$$f bin/vm.sh stop || true; }; done
+	@echo ">>> both stopped (whichever existed). Disks persist; Flux + Vault recover on next 'make up'."
+status-all: ## status + IP of BOTH VMs
+	@for f in .env.t4 .env.l4; do [ -f $$f ] && { echo "-- $$f --"; ENV_FILE=$$f bin/vm.sh status || true; }; done
+
+# ── Multi-node cluster (T4 server + L4 agent, ONE k3s) ──
+cluster-firewall: ## create the GCP firewall rule for k3s node-to-node traffic (6443/10250/8472; idempotent)
+	@bin/cluster.sh firewall
+cluster-join: ## join the ACTIVE machine (an agent, e.g. after `make use-l4`) to the T4 server as a GPU worker node
+	@bin/cluster.sh join
+
+KCTX ?= frit$(if $(LAB),-$(LAB),)
+kube-install: ## merge the ACTIVE machine's kubeconfig into ~/.kube/config as context 'frit-<lab>' (for kubectl + kubie). Needs 'make tunnel'.
 	@test -f $(KUBECONFIG) || { echo "no kubeconfig.yaml -- run 'make up' (or 'make kubeconfig') first"; exit 1; }
 	@mkdir -p $$HOME/.kube
 	@if [ -f $$HOME/.kube/config ]; then cp $$HOME/.kube/config $$HOME/.kube/config.pre-frit.bak; echo ">>> backed up ~/.kube/config -> ~/.kube/config.pre-frit.bak"; fi

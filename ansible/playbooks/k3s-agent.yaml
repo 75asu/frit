@@ -1,0 +1,70 @@
+---
+# frit -- join THIS host to an existing k3s server as a GPU worker (agent) node.
+#
+# Multi-node frit: the T4 (asu-sandbox) is the k3s SERVER (control-plane); this host
+# (the L4, asu-l4) joins as an agent so its GPU becomes a schedulable node in the same
+# cluster. The host GPU driver + nvidia-container-toolkit must already be installed
+# (run gpu.yaml first); the in-cluster GPU Operator then spreads its device-plugin +
+# containerd runtime DaemonSets onto this node automatically once it joins.
+#
+# Required extra vars (the Makefile `cluster-join` target fetches + passes them):
+#   k3s_url    = https://<SERVER_INTERNAL_IP>:6443   (T4 internal IP, stable across restarts)
+#   k3s_token  = the server node-token (from /var/lib/rancher/k3s/server/node-token on the T4)
+#
+# Idempotent: if k3s is already installed on this host it only ensures the agent is running.
+# Run via:  make cluster-join   (active .env must be the AGENT machine, e.g. make use-l4)
+- name: frit k3s agent join
+  hosts: all
+  become: true
+  vars:
+    k3s_version: "v1.32.4+k3s1"      # MUST match the server (k3s.yaml)
+
+  pre_tasks:
+    - name: GPU driver ready on this agent?
+      ansible.builtin.command: nvidia-smi -L
+      register: smi
+      changed_when: false
+      failed_when: false
+
+    - name: fail fast if no working GPU driver
+      ansible.builtin.assert:
+        that: smi.rc == 0
+        fail_msg: "nvidia-smi failed -- install the GPU foundation on this host first (make gpu)."
+
+    - name: require the join vars
+      ansible.builtin.assert:
+        that:
+          - k3s_url is defined
+          - k3s_url | length > 0
+          - k3s_token is defined
+          - k3s_token | length > 0
+        fail_msg: "pass k3s_url + k3s_token (the Makefile cluster-join target fetches them from the server)."
+
+  tasks:
+    - name: is k3s already installed on this host?
+      ansible.builtin.stat:
+        path: /usr/local/bin/k3s
+      register: k3s_bin
+
+    - name: install k3s AGENT + join the server (pinned version)
+      ansible.builtin.shell: |
+        curl -sfL https://get.k3s.io | \
+          INSTALL_K3S_VERSION="{{ k3s_version }}" \
+          K3S_URL="{{ k3s_url }}" \
+          K3S_TOKEN="{{ k3s_token }}" \
+          sh -s - agent
+      args:
+        creates: /usr/local/bin/k3s
+      when: not k3s_bin.stat.exists
+
+    - name: ensure k3s-agent is enabled + started
+      ansible.builtin.systemd:
+        name: k3s-agent
+        state: started
+        enabled: true
+
+    - name: agent joined -- reminder
+      ansible.builtin.debug:
+        msg: >
+          k3s-agent started against {{ k3s_url }}. Verify from the SERVER side:
+          kubectl get nodes  (this host should appear Ready within ~30-60s).
