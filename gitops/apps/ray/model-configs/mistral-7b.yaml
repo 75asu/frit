@@ -3,7 +3,9 @@
 # ~4-5 GB AWQ weights; 0.9 x 16 GB ~= 14 GB leaves ~9 GB KV , this is the model that finally
 # stresses the 16 GB KV limit, where the book's KV tricks (M-B / M-E) start to matter.
 # SOLO active for a clean baseline (co-host is a separate config).
-# T4 GOTCHA: quantization MUST be `awq` (Turing sm_75); `awq_marlin` needs sm_80+ and will fail.
+# L4-TUNED (2026-07-28): awq_marlin + CUDA graphs + native attention (Ada sm_89). The Turing-safe
+# baseline (plain awq / enforce_eager / TORCH_SDPA) was benchmarked first as mistral7b-awq-sweep;
+# this is the un-crippled L4 re-run (mistral7b-l4tuned-sweep) , same model+card, real settings.
 # Weights pre-warmed via cronjob/model-warm-mistral-7b (hf_transfer + resume) so serve-init
 # doesn't fight a cold HF download. Config + tuning history for mistral lives HERE.
 applications:
@@ -20,11 +22,11 @@ applications:
             max_ongoing_requests: 16     # 7B is far heavier than the 0.5B; start narrow, widen after baseline
           engine_kwargs:
             tensor_parallel_size: 1
-            quantization: awq            # Turing sm_75 -> awq kernel (NOT awq_marlin)
-            dtype: float16               # Turing has no bf16
+            quantization: awq_marlin     # L4 sm_89: Marlin AWQ kernel (faster than plain awq; needs sm_80+)
+            dtype: float16               # AWQ compute dtype (bf16 also OK on Ada; kept fp16 to isolate the delta)
             gpu_memory_utilization: 0.9
             max_model_len: 4096
-            enforce_eager: true          # CUDA graphs off = less memory (baseline)
+            enforce_eager: false         # L4-tuned: CUDA graphs ON (24GB headroom) -> lower latency / higher tput
             use_tqdm_on_load: false
           placement_group_config:
             bundles:
@@ -35,8 +37,4 @@ applications:
             env_vars:
               VLLM_RAY_PER_WORKER_GPUS: "0.9"
               HF_HUB_DISABLE_XET: "1"
-              # T4 / Turing sm_75: vLLM v1's default FlashInfer backend crashes at real prefills
-              # (BatchPrefillWithPagedKVCacheRun -> cudaErrorInvalidValue; needs sm_80+). NOTE:
-              # "XFORMERS" is NOT a v1 backend -> v1 silently falls back to FlashInfer (still crashes).
-              # TRITON_ATTN is the v1-supported, Turing-capable backend (Triton JITs for sm_75).
-              VLLM_ATTENTION_BACKEND: "TRITON_ATTN"
+              # L4-tuned: no attention-backend override -> vLLM picks FlashInfer/FLASH_ATTN (native, fast on Ada sm_89)
