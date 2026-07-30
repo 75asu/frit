@@ -15,6 +15,11 @@ resources:
 #     since Ray 2.51, log_engine_metrics) sanitized to ray_vllm_* (TTFT/ITL/TPOT, e2e latency, prompt+
 #     generation tokens, prefix-cache), already scraped by the step-1 PodMonitor. This board (Ray's own,
 #     40 panels) queries those exact ray_vllm_* names, so no config change was needed to light it up.
+#     KNOWN GAP (do not chase): 4 of the 44 panels stay "No data" -- the vLLM SCHEDULER GAUGES
+#     num_requests_running / _waiting / _swapped and kv_cache_usage_perc. Ray's log_engine_metrics
+#     forwards vLLM histograms+counters but NOT those gauges in this Ray 2.56 / vLLM 0.22 (V1 engine)
+#     combo. Not a scrape bug. KV-reuse is still covered by ray_vllm_prefix_cache_hits/queries_total,
+#     and in-flight/queue depth by the step-1 ray_serve_deployment_queued_queries panels.
 # Delivered as a ConfigMap labelled grafana_dashboard=1, which the kube-prometheus-stack Grafana
 # sidecar auto-imports (same mechanism as vllm-slo-dashboard).
 configMapGenerator:
@@ -27,3 +32,16 @@ configMapGenerator:
       - serve.json=dashboards/serve_grafana_dashboard.json
       - serve-deployment.json=dashboards/serve_deployment_grafana_dashboard.json
       - serve-llm.json=dashboards/serve_llm_grafana_dashboard.json
+
+  # GPU HARDWARE layer (step 3). NVIDIA's official DCGM dashboard (grafana.com gnetId 12239), delivered
+  # by the gpu-operator's nvidia-dcgm-exporter (already scraped via its own ServiceMonitor). Community
+  # artifact, not hand-authored; normalized only to drop the import-wizard __inputs and bake our default
+  # Prometheus datasource in place of ${DS_PROMETHEUS}. Panels: GPU util, framebuffer mem, power, SM
+  # clock, temp, tensor-core active -- the hardware view under the serve-llm engine view.
+  - name: gpu-dcgm-grafana-dashboard
+    options:
+      labels:
+        grafana_dashboard: "1"
+      disableNameSuffixHash: true
+    files:
+      - dcgm.json=dashboards/dcgm-exporter-dashboard.json
