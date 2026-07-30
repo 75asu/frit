@@ -21,7 +21,7 @@ resources:
 configMapGenerator:
   - name: frit-serve-serveconfig
     files:
-      - serveConfigV2=model-configs/deepseek-r1-7b-awq-marlin.yaml   # ACTIVE: deepseek-r1-7b AWQ-Marlin (L4-tuned). Switch to any model-configs/*.yaml
+      - serveConfigV2=model-configs/deepseek-r1-7b-awq-int4.yaml   # ACTIVE: deepseek-r1-7b AWQ-Marlin (L4-tuned). Switch to any model-configs/*.yaml
 
 generatorOptions:
   disableNameSuffixHash: true
