@@ -1,0 +1,62 @@
+# Benchmark recipe for MODEL 3: deepseek-r1-7b, LONG-DECODE profile, 256/1024.
+# THE DEEPSEEK-SPECIFIC RUN: 1024 output tokens exercises the long chain-of-thought decode that the chat
+# models (128-out) never touch -> the reasoning TPOT / ITL-stability / KV-preemption profile. Same sweep_size
+# + 60s/strategy as the 256/128 run (long outputs give plenty of inter-token samples inside 60s).
+# Variant-agnostic; PULL names the repo copy per-variant (docs/bench/results/deepseek7b-<variant>-longdecode.json).
+#   kubectl -n bench create job ds-longdecode --from=cronjob/bench-deepseek7b-longdecode
+#   kubectl -n bench logs -f ds-longdecode
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: bench-deepseek7b-longdecode
+  namespace: bench
+  labels:
+    app.kubernetes.io/name: guidellm
+    bench.frit/model: deepseek-r1-7b
+    bench.frit/profile: longdecode
+spec:
+  schedule: "0 0 1 1 *"        # dummy; suspended anyway
+  suspend: true
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 0          # don't retry: surface errors immediately
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: guidellm
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsUser: 0
+            fsGroup: 0
+          containers:
+            - name: guidellm
+              image: ghcr.io/vllm-project/guidellm:v0.7.1-amd64   # pinned; :latest is arm64-only
+              workingDir: /tmp
+              env:
+                - name: HF_HOME
+                  value: /tmp/hf
+              command:
+                - guidellm
+                - run
+                - --backend
+                - kind=openai_http,target=http://frit-serve-serve-svc.ray.svc.cluster.local:8000/deepseek-r1-7b,model=deepseek-r1-7b,validate_backend=false
+                - --tokenizer
+                - kind=huggingface_auto,model=deepseek-ai/DeepSeek-R1-Distill-Qwen-7B
+                - --data
+                - kind=synthetic_text,prompt_tokens=256,output_tokens=1024
+                - --profile
+                - kind=sweep,sweep_size=10
+                - --constraint
+                - kind=max_duration,seconds=60
+                - --output
+                - kind=json,path=/results/deepseek7b-longdecode.json
+              volumeMounts:
+                - name: results
+                  mountPath: /results
+          volumes:
+            - name: results
+              persistentVolumeClaim:
+                claimName: bench-results

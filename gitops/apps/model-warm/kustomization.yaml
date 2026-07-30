@@ -6,3 +6,5 @@ namespace: ray
 # new model so the cold HF download happens off the serve path (resumable + hf_transfer).
 resources:
   - cronjob-warm-mistral-7b.yaml
+  - cronjob-warm-deepseek-r1-7b-awq.yaml    # DeepSeek AWQ INT4 (~4.5 GB) -> awq-int4/awq-marlin variants
+  - cronjob-warm-deepseek-r1-7b-base.yaml   # DeepSeek base (~15 GB) -> fp8/fp16 variants

@@ -1,0 +1,50 @@
+---
+# Model weight PRE-WARMER , DeepSeek-R1-Distill-Qwen-7B base weights (deepseek-ai, ~15 GB).
+# Feeds the fp8 (dynamic-quantized at load) + fp16 (unquantized) variants. Downloads into the
+# shared hostPath cache off the serve path (hf_transfer + resumable snapshot_download) -- the ~15 GB
+# base is exactly the cold-download risk the warmer exists to remove.
+# Suspended CronJob (never auto-fires); trigger with:
+#   kubectl -n ray create job warm-deepseek-r1-7b-base --from=cronjob/model-warm-deepseek-r1-7b-base
+#   kubectl -n ray logs -f job/warm-deepseek-r1-7b-base
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: model-warm-deepseek-r1-7b-base
+  namespace: ray
+spec:
+  schedule: "0 0 1 1 *"        # once a year; irrelevant, suspend:true means it never fires
+  suspend: true
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      ttlSecondsAfterFinished: 3600
+      template:
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsUser: 0          # hostPath cache is root-owned
+          containers:
+            - name: warm
+              image: python:3.12-slim
+              env:
+                - name: MODEL
+                  value: deepseek-ai/DeepSeek-R1-Distill-Qwen-7B
+                - name: HF_HUB_ENABLE_HF_TRANSFER
+                  value: "1"
+                - name: HF_HUB_DISABLE_XET
+                  value: "1"
+              command: ["sh", "-c"]
+              args:
+                - |
+                  set -eux
+                  pip install -q "huggingface_hub[hf_transfer]"
+                  python -c "import huggingface_hub as h; print('huggingface_hub', h.__version__)"
+                  python -c "from huggingface_hub import snapshot_download; import os; p=snapshot_download(os.environ['MODEL'], cache_dir='/hub'); print('==> done; cached at', p)"
+              volumeMounts:
+                - name: model-cache
+                  mountPath: /hub
+          volumes:
+            - name: model-cache
+              hostPath:
+                path: /var/lib/frit-models
+                type: DirectoryOrCreate

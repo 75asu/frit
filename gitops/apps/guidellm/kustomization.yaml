@@ -8,3 +8,5 @@ resources:
   - cronjob-qwen05b-fp16-sync.yaml
   - cronjob-qwen05b-fp16-sweep.yaml
   - cronjob-mistral7b-awq-sweep.yaml
+  - cronjob-deepseek7b-sweep.yaml       # DeepSeek 256/128 (apples-to-apples vs qwen/mistral)
+  - cronjob-deepseek7b-longdecode.yaml  # DeepSeek 256/1024 (long-CoT reasoning-decode profile)

@@ -1,0 +1,37 @@
+# frit MODEL 3 , DeepSeek-R1-Distill-Qwen-7B , AWQ INT4, plain-awq BASELINE (the "before tuning" config).
+# Qwen2.5-7B architecture fine-tuned on R1 reasoning traces -> a LONG chain-of-thought / heavy-decode model,
+# the deliberate contrast case vs the chat models (Qwen/Mistral). head_dim 128 => needs Ada (unservable on the T4).
+# casperhansen = the AutoAWQ author's own INT4 quant (non-gated). Plain awq kernel + CUDA graphs OFF = the
+# un-tuned L4 baseline to measure the Marlin+graphs delta -> deepseek-r1-7b-awq-marlin.yaml.
+# max_model_len 16384 (vs the chat models' 4096) so the long CoT decode isn't truncated.
+# Bench: TBD (run bench-deepseek7b-sweep + bench-deepseek7b-longdecode). One variant active at a time (../kustomization.yaml).
+applications:
+  - name: deepseek-r1-7b
+    route_prefix: /deepseek-r1-7b
+    import_path: ray.serve.llm:build_openai_app
+    args:
+      llm_configs:
+        - model_loading_config:
+            model_id: deepseek-r1-7b
+            model_source: casperhansen/deepseek-r1-distill-qwen-7b-awq   # AWQ INT4 checkpoint (non-gated)
+          deployment_config:
+            num_replicas: 1
+            max_ongoing_requests: 16
+          engine_kwargs:
+            tensor_parallel_size: 1
+            quantization: awq            # plain AWQ kernel (the un-tuned baseline; Marlin is the tuned variant)
+            dtype: float16
+            gpu_memory_utilization: 0.9
+            max_model_len: 16384
+            enforce_eager: true          # CUDA graphs OFF (baseline; the tuned variant turns them on)
+            use_tqdm_on_load: false
+          placement_group_config:
+            bundles:
+              - GPU: 0.9
+                CPU: 2
+                memory: 8589934592
+          runtime_env:
+            env_vars:
+              VLLM_RAY_PER_WORKER_GPUS: "0.9"
+              HF_HUB_DISABLE_XET: "1"
+              # native attention (FLASH_ATTN) on Ada sm_89 , no Turing override needed
