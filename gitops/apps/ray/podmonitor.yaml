@@ -1,0 +1,29 @@
+# Scrapes Ray Serve's own metrics (container port 8080, named "metrics") off EVERY Ray node
+# (head + worker), via the stable label ray.io/is-ray-node=yes (survives RayService redeploys,
+# unlike ray.io/cluster which carries a changing suffix).
+#
+# What this gets us (the serve-layer signals): request rate, QUEUE DEPTH
+# (ray_serve_deployment_queued_queries), per-deployment processing latency, replica health, and the
+# AUTOSCALING signals (ray_serve_autoscaling_*) that M6.2 will drive on. It does NOT include the vLLM
+# ENGINE metrics (vllm:* -- TTFT/ITL/KV); those live inside the engine and are step 2.
+#
+# The Prometheus Operator turns this CRD into scrape config (we never touch prometheus.yml). Its
+# podMonitorSelector is {} so no special label is required; the release label is hygiene only.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: ray-serve
+  namespace: ray
+  labels:
+    app.kubernetes.io/part-of: frit-serve
+    release: kube-prometheus-stack
+spec:
+  namespaceSelector:
+    matchNames: [ray]
+  selector:
+    matchLabels:
+      ray.io/is-ray-node: "yes"
+  podMetricsEndpoints:
+    - port: metrics        # the named container port 8080
+      path: /metrics
+      interval: 15s

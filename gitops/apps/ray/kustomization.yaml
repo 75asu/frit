@@ -7,6 +7,7 @@ namespace: ray
 resources:
   - rayservice.yaml
   - serve-service.yaml
+  - podmonitor.yaml          # scrape Ray Serve metrics (:8080) -> Prometheus (queue/autoscaling/latency)
 
 # ONE file per BENCHMARKED VARIANT in model-configs/ (self-documenting; the tree mirrors docs/bench/).
 # The ACTIVE config is whichever file is injected below as serveConfigV2 , switch by changing this
