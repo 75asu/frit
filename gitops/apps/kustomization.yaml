@@ -9,8 +9,7 @@ resources:
   - sources/litellm.yaml
   # Monitoring CONFIGS (CRs that need the Prometheus Operator CRDs from apps-controllers).
   # The kube-prometheus-stack chart + namespace live in apps/controllers/monitoring/.
-  - monitoring/grafana-externalsecret.yaml
-  - monitoring/vllm-slo-dashboard.yaml
+  - monitoring          # grafana ESO + dashboards (vllm-slo + Ray's own serve/serve-deployment)
   # vLLM — inference engine with prefix-aware routing (production-stack chart)
   - vllm/namespace.yaml
   - vllm/helmrelease.yaml

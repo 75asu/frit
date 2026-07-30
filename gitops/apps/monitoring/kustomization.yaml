@@ -1,0 +1,25 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: monitoring
+
+# Monitoring CRs (need the Prometheus Operator CRDs from apps-controllers) + Grafana dashboards.
+resources:
+  - grafana-externalsecret.yaml
+  - vllm-slo-dashboard.yaml
+
+# Ray's OWN auto-generated Grafana dashboards, pulled from the running head pod
+# (/tmp/ray/session_latest/metrics/grafana/dashboards/). These are the official Ray dashboards and
+# match our exact ray_serve_* metrics + labels, so nothing is hand-authored.
+#   serve + serve-deployment  -> ray_serve_* (request rate, queue, latency, replicas) , LIVE now (step 1)
+#   serve-llm (added at step 2) -> the vllm: engine metrics (TTFT/ITL/tokens/KV)
+# Delivered as a ConfigMap labelled grafana_dashboard=1, which the kube-prometheus-stack Grafana
+# sidecar auto-imports (same mechanism as vllm-slo-dashboard).
+configMapGenerator:
+  - name: ray-serve-grafana-dashboards
+    options:
+      labels:
+        grafana_dashboard: "1"
+      disableNameSuffixHash: true
+    files:
+      - serve.json=dashboards/serve_grafana_dashboard.json
+      - serve-deployment.json=dashboards/serve_deployment_grafana_dashboard.json
