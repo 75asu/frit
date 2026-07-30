@@ -38,6 +38,10 @@ configMapGenerator:
   # artifact, not hand-authored; normalized only to drop the import-wizard __inputs and bake our default
   # Prometheus datasource in place of ${DS_PROMETHEUS}. Panels: GPU util, framebuffer mem, power, SM
   # clock, temp, tensor-core active -- the hardware view under the serve-llm engine view.
+  # KNOWN GAP: the "GPU SM/Tensor activity" panel (DCGM_FI_PROF_PIPE_TENSOR_ACTIVE) reads 0 even at
+  # 100% util -- the exporter's DCGM PROFILING collectors (DCGM_FI_PROF_*) aren't sampling here. Util/
+  # power/mem/clock/temp are the DEV_* fields and work; the PROF_* tensor-core panel needs the profiling
+  # module enabled on the dcgm-exporter (follow-up, not a scrape bug).
   - name: gpu-dcgm-grafana-dashboard
     options:
       labels:
