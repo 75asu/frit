@@ -26,6 +26,8 @@ GPU observability, inference SLOs, chaos engineering, load testing, postmortems,
 
 > **Status note (2026-07-30):** Since the note above: built a cluster-native **guidellm** load-test harness + a multi-model **serving matrix** (qwen-0.5B/3-4B, mistral-7B 4-precision, deepseek-R1-distill-7B 4-precision) on a multi-node **T4+L4** cluster (the T4 head_dim-128 wall drove the L4 move), a frit-native benchmark site, model-warm pre-download hardening, and a `make verify` serve-gate. **Roadmap change:** added **M6.2 (Autoscaling + Queue Mgmt)** from the AIRE JD-signal analysis (`career-ops/jobs/JD/JD_SIGNAL_CROSS_COMPARE.md`) -- it was the one thing mid-level AIRE / ML-infra-SRE roles demand that the milestones missed. Next sequence: finish DeepSeek benchmarks -> M4 SLOs -> M6 load-test -> M6.2 autoscaling -> M6.5 HA.
 
+> **Priority ordering (JD-signal scan of 8 roles, 2026-07-30):** BUILD-NEXT, in order = M4 SLOs -> M6 load-test + M6.2 autoscaling -> **M9 multi-GPU/NCCL/RDMA** (5 of 8 roles want it) -> **M14 platform** (scheduling/multi-tenancy, for Sarvam, the top no-visa target). PARKED as low-demand from the realistic target set (these were Anthropic-specific bets): **M10 TPU, M11 firmware ops, M5.5 eval gate, M5.6 safeguard serving**, plus GPU-*training* clusters + data pipelines (off the inference lane). Full per-role reasoning: `career-ops/jobs/JD/JD_SIGNAL_CROSS_COMPARE.md`.
+
 Repo: `github.com/binarysquadd/frit`
 Related: [Kiln](https://github.com/binarysquadd/kiln) — the isolation platform this reliability layer will eventually run on top of.
 
@@ -90,6 +92,7 @@ Related: [Kiln](https://github.com/binarysquadd/kiln) — the isolation platform
 | M11 | Firmware & Driver Compatibility Ops | NOT STARTED | driver/firmware matrix, staged rollout + rollback | "firmware ops for sres" |
 | M12 | Cost & Capacity Model | NOT STARTED | per-token cost meter, fleet TCO model | "what does a million tokens cost" |
 | M13 | GPU Fault-Injection + Remediation Operator | NOT STARTED | kubebuilder operator, 2 CRDs: inject synthetic GPU faults, then detect→cordon→drain(PDB-aware)→reset; fleet-scale demo via KWOK + fake-gpu-operator | "building a gpu fault-injection + remediation operator" |
+| M14 | GPU Scheduling + Multi-Tenancy Platform | NOT STARTED (JD-driven) | gang scheduling (Kueue/Volcano), quota + preemption, MIG/MPS/time-slice self-service tiers, CLI/API | "building a self-service gpu platform" |
 
 > M3.5 / M5.5 / M5.6 / M6.5 are inserts at their logical position in the existing sequence (decimal-numbered so M0-M8 IDs and the four-session plan stay stable). M9-M12 are advanced extensions; M9-M10 are ephemeral hardware bursts (spin up on Spot, capture one artifact, tear down). All four advanced ones were added from the AIRE gap analysis -- see each section's "Why (AIRE)" note.
 
@@ -532,6 +535,27 @@ Open WebUI / Aider (CLI)
 **Done when:** `kubectl apply` a `GPUFaultInjection` for a synthetic XID -> the controller classifies it, cordons the node, drains the vLLM engine while respecting its PDB, triggers a mock reset, and the detection-to-drain latency appears on the Grafana panel.
 
 **Content:** dev.to article -- "building a gpu fault-injection + remediation operator: testing whether your cluster actually recovers."
+
+---
+
+## M14: GPU Scheduling + Multi-Tenancy Platform (self-service)
+
+**Status:** NOT STARTED -- added from the JD scan (Sarvam's entire JD; also Databricks/Modal). frit has zero of this today.
+**Placement:** after M6.2 (you can autoscale) and M13 (you can write controllers). This is the "build side" platform layer, not the "operate side".
+
+**Goal:** turn the single-tenant lab into a self-service GPU platform that multiple "tenants" share -- the exact layer Sarvam (top target: no-visa, sovereign-AI) is hiring for. Treat the platform as a product, ML users as customers.
+
+**What gets built (take a slice end to end, not all at once):**
+- **Scheduling:** a GPU scheduler layer -- **Kueue or Volcano** (or a small custom controller) -- with gang scheduling, priority + preemption, queue fairness, quota enforcement, and topology-aware placement (keep a job's ranks on the same node/fabric).
+- **Multi-tenancy + isolation:** namespaced tenants, RBAC + quota/fair-share, and **MIG / MPS / time-slicing exposed as self-service tiers** (not a one-off config). L4 does MPS + time-slicing; MIG needs an A100 (the M9 burst).
+- **Self-service surface:** a CLI/API for "submit a job / get an endpoint" so a user never files a ticket; measure the platform by adoption + self-service, not tickets closed.
+- **Ties in:** the M6.2 autoscaler, M5 serving routing, and M13 operator become platform features here.
+
+**Done when:** two "tenants" submit GPU work through the self-service CLI; the scheduler gang-schedules + enforces quota + preempts by priority; one tenant gets a MIG/MPS/time-sliced slice as a tier; all visible on a Grafana panel.
+
+**Content:** dev.to article -- "building a self-service gpu platform: scheduling, multi-tenancy, and MIG/MPS tiers on a homelab fleet."
+
+**Why (AIRE):** Sarvam's JD almost verbatim (your #1 realistic, no-visa, sovereign-AI target), plus the platform-build signal across Databricks + Modal. The single milestone that most moves the needle on your best landable role.
 
 ---
 
