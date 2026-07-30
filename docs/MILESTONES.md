@@ -26,7 +26,7 @@ GPU observability, inference SLOs, chaos engineering, load testing, postmortems,
 
 > **Status note (2026-07-30):** Since the note above: built a cluster-native **guidellm** load-test harness + a multi-model **serving matrix** (qwen-0.5B/3-4B, mistral-7B 4-precision, deepseek-R1-distill-7B 4-precision) on a multi-node **T4+L4** cluster (the T4 head_dim-128 wall drove the L4 move), a frit-native benchmark site, model-warm pre-download hardening, and a `make verify` serve-gate. **Roadmap change:** added **M6.2 (Autoscaling + Queue Mgmt)** from the AIRE JD-signal analysis (`career-ops/jobs/JD/JD_SIGNAL_CROSS_COMPARE.md`) -- it was the one thing mid-level AIRE / ML-infra-SRE roles demand that the milestones missed. Next sequence: finish DeepSeek benchmarks -> M4 SLOs -> M6 load-test -> M6.2 autoscaling -> M6.5 HA.
 
-> **Priority ordering (JD-signal scan of 8 roles, 2026-07-30):** BUILD-NEXT, in order = M4 SLOs -> M6 load-test + M6.2 autoscaling -> **M9 multi-GPU/NCCL/RDMA** (5 of 8 roles want it) -> **M14 platform** (scheduling/multi-tenancy, for Sarvam, the top no-visa target). PARKED as low-demand from the realistic target set (these were Anthropic-specific bets): **M10 TPU, M11 firmware ops, M5.5 eval gate, M5.6 safeguard serving**, plus GPU-*training* clusters + data pipelines (off the inference lane). Full per-role reasoning: `career-ops/jobs/JD/JD_SIGNAL_CROSS_COMPARE.md`.
+> **Priority ordering (JD-signal scan of 8 roles, 2026-07-30):** BUILD-NEXT, in order = ~~M4 SLOs~~ (PARKED, no continuous traffic) -> **M6.2 autoscaling** (top JD gap; rides on the o11y just shipped) + M6 load-test (breaking-point data mostly captured via guidellm) -> **M9 multi-GPU/NCCL/RDMA** (5 of 8 roles want it) -> **M14 platform** (scheduling/multi-tenancy, for Sarvam, the top no-visa target). PARKED as low-demand from the realistic target set (these were Anthropic-specific bets): **M10 TPU, M11 firmware ops, M5.5 eval gate, M5.6 safeguard serving**, plus GPU-*training* clusters + data pipelines (off the inference lane). Full per-role reasoning: `career-ops/jobs/JD/JD_SIGNAL_CROSS_COMPARE.md`.
 
 Repo: `github.com/binarysquadd/frit`
 Related: [Kiln](https://github.com/binarysquadd/kiln) — the isolation platform this reliability layer will eventually run on top of.
@@ -237,7 +237,7 @@ Open WebUI / Aider (CLI)
 
 ## M4: SLOs + Alerting
 
-**Status:** NOT STARTED
+**Status:** PARKED (2026-07-30, intentional) -- burn-rate alerting + error-budget response only earns its keep against continuous real traffic. frit is an ephemeral lab (spin up, benchmark, tear down) with no users, so an alert would never fire on anything real. The o11y that DOES earn its keep here shipped in the 2026-07-30 polish (serve + serve-llm engine `ray_vllm_*` + DCGM dashboards, read on-demand). Revisit M4 only if frit ever runs continuously. The SLI/SLO *definitions* (TTFT/TPOT targets) are still worth writing when M6.2 needs a pass/fail line; the *alerting machinery* is what's parked.
 
 **Goal:** Turn the dashboard into a production-grade reliability system. Define what "good" looks like formally, compute error budgets, and alert on burn rate — not on individual threshold breaches. This is the gap between junior SRE (alert when metric is high) and Staff SRE (alert when error budget is draining at a dangerous rate).
 
@@ -335,8 +335,17 @@ Open WebUI / Aider (CLI)
 
 ## M6.2: Autoscaling + Queue Management for GPU Inference
 
-**Status:** NOT STARTED -- added from the JD gap analysis (`career-ops/jobs/JD/JD_SIGNAL_CROSS_COMPARE.md`).
+**Status:** NEXT UP -- approach decided 2026-07-30, real multi-node L4 scale-out (not single-node replicas). Starts next session.
 **Placement:** after M6 (you know the breaking point), before M6.5. M6 *finds* the limit; M6.2 *survives* it.
+
+**Decided approach (2026-07-30) -- real multi-node L4 scale-out. Execution plan (resume here):**
+Current state at decision time: frit runs as a **standalone single L4** (`asu-l4`, asia-south1-b), NOT the T4-server+L4-agent cluster. Ray worker group `replicas=1/max=1`; deepseek deployment `num_replicas: 1` static.
+1. **Provision + join a 2nd L4** (`asu-l4b`, asia-south1, Spot): GPU driver, join `asu-l4` as the k3s **server** (2x L4, no T4 in the loop -- the T4 can't serve the head_dim-128 7B). NOTE: `bin/cluster.sh` currently assumes the T4 is the server -- point the join at `asu-l4` as server, or generalise the script. *(Spot cost starts here.)*
+2. **Ray worker group -> max 2** (`rayservice.yaml`: minReplicas 1 / maxReplicas 2) so a 2nd GPU worker pod can exist on the 2nd L4.
+3. **Serve autoscaling:** in the active deepseek config, swap `num_replicas: 1` for `autoscaling_config {min_replicas: 1, max_replicas: 2, target_ongoing_requests: 8}`; each replica = one full L4 (fp16 uses ~20GB of 24GB, so a 2nd replica is *physically forced* onto node 2 -- exactly the scale-out to show).
+4. **Sync + verify placement:** the 2 replicas land on 2 different L4s.
+5. **Proof (burst ON vs OFF):** guidellm burst against `max_replicas: 1` (breaches TTFT under load) vs `max_replicas: 2` (scales out, holds), captured on the `ray_serve_autoscaling_*` + replica-count + TTFT panels shipped in the 2026-07-30 o11y polish.
+6. **Teardown:** scale back to 1, `delete asu-l4b` to stop Spot billing; keep `asu-l4`. (Cost = one extra L4 Spot, ~1 hr of demo.)
 
 **Goal:** the single most-demanded thing across mid-level AIRE / ML-infra-SRE roles, and the one the roadmap was missing: keep inference within SLO under variable, bursty load by autoscaling + queuing + load-balancing, instead of just shedding requests or breaching. This is Photoroom's entire job ("load balancing, autoscaling, queuing, traffic management at scale") and shows up implicitly in every ML-infra SRE JD.
 

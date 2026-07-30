@@ -4,13 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>frit — GPU reliability engineering at homelab scale</title>
-  <meta name="description" content="One Tesla T4. The full inference stack: vLLM, Ray Serve, LiteLLM, DCGM. Real SLOs, load tests, chaos, postmortems. One GPU practicing the patterns that hold at 1000." />
+  <meta name="description" content="One NVIDIA L4. The full inference stack: vLLM, Ray Serve, LiteLLM, DCGM. Multi-precision benchmarks, full-stack GPU + engine observability, load tests. One GPU practicing the patterns that hold at 1000." />
   <link rel="canonical" href="https://75asu.github.io/frit" />
   <meta name="robots" content="index, follow, max-image-preview:large" />
   <meta property="og:site_name" content="frit" />
   <meta property="og:type" content="website" />
   <meta property="og:title" content="frit — GPU reliability engineering at homelab scale" />
-  <meta property="og:description" content="One Tesla T4. The full inference stack. Real SLOs, load tests, chaos. One GPU practicing the patterns that hold at 1000." />
+  <meta property="og:description" content="One NVIDIA L4. The full inference stack. Multi-precision benchmarks, GPU + engine observability, load tests. One GPU practicing the patterns that hold at 1000." />
   <meta property="og:url" content="https://75asu.github.io/frit" />
   <meta property="og:image" content="https://75asu.github.io/frit/og.png" />
   <meta property="og:image:width" content="1200" /><meta property="og:image:height" content="627" />
@@ -115,22 +115,26 @@
       <div class="ms-list">
         <div class="ms ms-done">
           <span class="ms-num">M0</span><span class="ms-name">GPU Foundation</span><span class="ms-badge badge-done">shipped</span>
-          <span class="ms-sub">driver &middot; DCGM &middot; k3s &middot; GPU-in-k8s &middot; vLLM on the T4 &mdash; bare VM &rarr; stack &rarr; bare, one command</span>
+          <span class="ms-sub">driver &middot; DCGM &middot; k3s &middot; GPU-in-k8s &middot; vLLM on the L4 &mdash; bare VM &rarr; stack &rarr; bare, one command</span>
         </div>
         <div class="ms ms-done">
-          <span class="ms-num">M1</span><span class="ms-name">GPU Metrics + Observability</span><span class="ms-badge badge-done">shipped</span>
-          <span class="ms-sub">GPU Operator + DCGM exporter &rarr; Prometheus &rarr; Grafana, via Flux</span>
+          <span class="ms-num">M1</span><span class="ms-name">Full-Stack Observability</span><span class="ms-badge badge-done">shipped</span>
+          <span class="ms-sub">DCGM (GPU) + Ray Serve + vLLM engine metrics &rarr; Prometheus &rarr; Grafana &middot; serve / serve-llm / DCGM dashboards, via Flux</span>
         </div>
         <div class="ms ms-done">
           <span class="ms-num">M2</span><span class="ms-name">Inference Layer + Token Path</span><span class="ms-badge badge-done">shipped</span>
-          <span class="ms-sub">vLLM + Ray Serve + LiteLLM + Open WebUI serving on the T4 &middot; OpenAI-compatible token path</span>
+          <span class="ms-sub">vLLM + Ray Serve + LiteLLM + Open WebUI &middot; OpenAI-compatible token path &middot; multi-model serving matrix</span>
+        </div>
+        <div class="ms ms-done">
+          <span class="ms-num">M3</span><span class="ms-name">Load Testing + Benchmarks</span><span class="ms-badge badge-done">shipped</span>
+          <span class="ms-sub">guidellm harness, GitOps-triggered &middot; TTFT / ITL / TPOT + throughput &middot; 4-precision sweeps (INT4 / FP8 / FP16) &middot; public benchmarks page</span>
         </div>
         <div class="ms ms-active">
-          <span class="ms-num">M3</span><span class="ms-name">Load Testing + Benchmarks</span><span class="ms-badge badge-active">active</span>
-          <span class="ms-sub">guidellm harness, GitOps-triggered &middot; TTFT / ITL / TPOT + throughput &middot; native per-run reports + public benchmarks page</span>
+          <span class="ms-num">M4</span><span class="ms-name">Multi-Node Autoscaling</span><span class="ms-badge badge-active">active</span>
+          <span class="ms-sub">Ray Serve autoscale across L4 nodes &middot; hold TTFT under burst &middot; real horizontal scale-out</span>
         </div>
         <div class="ms-later">
-          <span class="ms-later-text">M4 &ndash; M8 &nbsp;·&nbsp; SLOs, chaos, postmortems, OSS cadence</span>
+          <span class="ms-later-text">M5 &ndash; M8 &nbsp;·&nbsp; SLOs, chaos, postmortems, OSS cadence</span>
           <span class="ms-later-line"></span>
         </div>
       </div>
