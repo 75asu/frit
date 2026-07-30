@@ -1,5 +1,390 @@
 [
   {
+    "run": "deepseek7b-awq-int4-longdecode",
+    "model": "deepseek-r1-7b",
+    "gpu": "L4",
+    "precision": "awq-int4",
+    "profile": "longdecode",
+    "strategies": 10,
+    "max_concurrency": null,
+    "duration_s": 60.0,
+    "requests_ok": 3,
+    "requests_err": 0,
+    "ttft_ms": {
+      "median": 274.91,
+      "mean": 275.85,
+      "p50": 274.91,
+      "p90": 280.36,
+      "p95": 280.36,
+      "p99": 280.36
+    },
+    "itl_ms": {
+      "median": 25.21,
+      "mean": 25.12,
+      "p50": 25.21,
+      "p90": 25.22,
+      "p95": 25.22,
+      "p99": 25.22
+    },
+    "tpot_ms": {
+      "median": 25.45,
+      "mean": 25.37,
+      "p50": 25.45,
+      "p90": 25.47,
+      "p95": 25.47,
+      "p99": 25.47
+    },
+    "req_latency_s": {
+      "median": 26.06,
+      "mean": 25.98,
+      "p50": 26.06,
+      "p90": 26.08,
+      "p95": 26.08,
+      "p99": 26.08
+    },
+    "throughput": {
+      "req_per_s": 0.03,
+      "output_tok_per_s": 39.56,
+      "total_tok_per_s": 49.56
+    },
+    "tokens": {
+      "prompt_median": 259.0,
+      "output_median": 1024.0
+    },
+    "guidellm_version": "0.7.1",
+    "raw": "results/deepseek7b-awq-int4-longdecode.json"
+  },
+  {
+    "run": "deepseek7b-awq-int4-sweep",
+    "model": "deepseek-r1-7b",
+    "gpu": "L4",
+    "precision": "awq-int4",
+    "profile": "sweep",
+    "strategies": 10,
+    "max_concurrency": null,
+    "duration_s": 60.0,
+    "requests_ok": 18,
+    "requests_err": 0,
+    "ttft_ms": {
+      "median": 268.79,
+      "mean": 269.57,
+      "p50": 268.79,
+      "p90": 270.56,
+      "p95": 280.76,
+      "p99": 280.76
+    },
+    "itl_ms": {
+      "median": 25.0,
+      "mean": 25.22,
+      "p50": 25.0,
+      "p90": 26.07,
+      "p95": 26.35,
+      "p99": 26.35
+    },
+    "tpot_ms": {
+      "median": 26.92,
+      "mean": 27.12,
+      "p50": 26.92,
+      "p90": 27.97,
+      "p95": 28.24,
+      "p99": 28.24
+    },
+    "req_latency_s": {
+      "median": 3.45,
+      "mean": 3.47,
+      "p50": 3.45,
+      "p90": 3.58,
+      "p95": 3.61,
+      "p99": 3.61
+    },
+    "throughput": {
+      "req_per_s": 0.28,
+      "output_tok_per_s": 37.02,
+      "total_tok_per_s": 111.93
+    },
+    "tokens": {
+      "prompt_median": 259.0,
+      "output_median": 128.0
+    },
+    "guidellm_version": "0.7.1",
+    "raw": "results/deepseek7b-awq-int4-sweep.json"
+  },
+  {
+    "run": "deepseek7b-awq-marlin-longdecode",
+    "model": "deepseek-r1-7b",
+    "gpu": "L4",
+    "precision": "awq-marlin",
+    "profile": "longdecode",
+    "strategies": 10,
+    "max_concurrency": null,
+    "duration_s": 60.0,
+    "requests_ok": 4,
+    "requests_err": 0,
+    "ttft_ms": {
+      "median": 121.93,
+      "mean": 124.08,
+      "p50": 121.93,
+      "p90": 131.12,
+      "p95": 131.12,
+      "p99": 131.12
+    },
+    "itl_ms": {
+      "median": 19.19,
+      "mean": 19.21,
+      "p50": 19.19,
+      "p90": 19.25,
+      "p95": 19.25,
+      "p99": 19.25
+    },
+    "tpot_ms": {
+      "median": 19.29,
+      "mean": 19.31,
+      "p50": 19.29,
+      "p90": 19.35,
+      "p95": 19.35,
+      "p99": 19.35
+    },
+    "req_latency_s": {
+      "median": 19.75,
+      "mean": 19.78,
+      "p50": 19.75,
+      "p90": 19.81,
+      "p95": 19.81,
+      "p99": 19.81
+    },
+    "throughput": {
+      "req_per_s": 0.05,
+      "output_tok_per_s": 51.86,
+      "total_tok_per_s": 64.98
+    },
+    "tokens": {
+      "prompt_median": 259.0,
+      "output_median": 1024.0
+    },
+    "guidellm_version": "0.7.1",
+    "raw": "results/deepseek7b-awq-marlin-longdecode.json"
+  },
+  {
+    "run": "deepseek7b-awq-marlin-sweep",
+    "model": "deepseek-r1-7b",
+    "gpu": "L4",
+    "precision": "awq-marlin",
+    "profile": "sweep",
+    "strategies": 10,
+    "max_concurrency": null,
+    "duration_s": 60.0,
+    "requests_ok": 24,
+    "requests_err": 0,
+    "ttft_ms": {
+      "median": 117.38,
+      "mean": 118.28,
+      "p50": 117.38,
+      "p90": 118.85,
+      "p95": 124.76,
+      "p99": 130.12
+    },
+    "itl_ms": {
+      "median": 19.04,
+      "mean": 19.04,
+      "p50": 19.04,
+      "p90": 19.11,
+      "p95": 19.11,
+      "p99": 19.13
+    },
+    "tpot_ms": {
+      "median": 19.81,
+      "mean": 19.81,
+      "p50": 19.81,
+      "p90": 19.87,
+      "p95": 19.88,
+      "p99": 19.9
+    },
+    "req_latency_s": {
+      "median": 2.54,
+      "mean": 2.54,
+      "p50": 2.54,
+      "p90": 2.54,
+      "p95": 2.54,
+      "p99": 2.55
+    },
+    "throughput": {
+      "req_per_s": 0.38,
+      "output_tok_per_s": 50.56,
+      "total_tok_per_s": 152.87
+    },
+    "tokens": {
+      "prompt_median": 259.0,
+      "output_median": 128.0
+    },
+    "guidellm_version": "0.7.1",
+    "raw": "results/deepseek7b-awq-marlin-sweep.json"
+  },
+  {
+    "run": "deepseek7b-fp16-sweep",
+    "model": "deepseek-r1-7b",
+    "gpu": "L4",
+    "precision": "fp16",
+    "profile": "sweep",
+    "strategies": 10,
+    "max_concurrency": null,
+    "duration_s": 60.0,
+    "requests_ok": 9,
+    "requests_err": 0,
+    "ttft_ms": {
+      "median": 167.92,
+      "mean": 180.79,
+      "p50": 167.92,
+      "p90": 281.5,
+      "p95": 281.5,
+      "p99": 281.5
+    },
+    "itl_ms": {
+      "median": 56.88,
+      "mean": 56.92,
+      "p50": 56.88,
+      "p90": 57.05,
+      "p95": 57.05,
+      "p99": 57.05
+    },
+    "tpot_ms": {
+      "median": 57.84,
+      "mean": 57.89,
+      "p50": 57.84,
+      "p90": 58.61,
+      "p95": 58.61,
+      "p99": 58.61
+    },
+    "req_latency_s": {
+      "median": 7.4,
+      "mean": 7.41,
+      "p50": 7.4,
+      "p90": 7.5,
+      "p95": 7.5,
+      "p99": 7.5
+    },
+    "throughput": {
+      "req_per_s": 0.13,
+      "output_tok_per_s": 17.35,
+      "total_tok_per_s": 52.71
+    },
+    "tokens": {
+      "prompt_median": 261.0,
+      "output_median": 128.0
+    },
+    "guidellm_version": "0.7.1",
+    "raw": "results/deepseek7b-fp16-sweep.json"
+  },
+  {
+    "run": "deepseek7b-fp8-longdecode",
+    "model": "deepseek-r1-7b",
+    "gpu": "L4",
+    "precision": "fp8",
+    "profile": "longdecode",
+    "strategies": 10,
+    "max_concurrency": null,
+    "duration_s": 60.0,
+    "requests_ok": 2,
+    "requests_err": 0,
+    "ttft_ms": {
+      "median": 120.92,
+      "mean": 124.55,
+      "p50": 120.92,
+      "p90": 128.18,
+      "p95": 128.18,
+      "p99": 128.18
+    },
+    "itl_ms": {
+      "median": 34.66,
+      "mean": 34.72,
+      "p50": 34.66,
+      "p90": 34.77,
+      "p95": 34.77,
+      "p99": 34.77
+    },
+    "tpot_ms": {
+      "median": 34.75,
+      "mean": 34.8,
+      "p50": 34.75,
+      "p90": 34.85,
+      "p95": 34.85,
+      "p99": 34.85
+    },
+    "req_latency_s": {
+      "median": 35.59,
+      "mean": 35.64,
+      "p50": 35.59,
+      "p90": 35.69,
+      "p95": 35.69,
+      "p99": 35.69
+    },
+    "throughput": {
+      "req_per_s": 0.02,
+      "output_tok_per_s": 28.78,
+      "total_tok_per_s": 36.12
+    },
+    "tokens": {
+      "prompt_median": 261.0,
+      "output_median": 1024.0
+    },
+    "guidellm_version": "0.7.1",
+    "raw": "results/deepseek7b-fp8-longdecode.json"
+  },
+  {
+    "run": "deepseek7b-fp8-sweep",
+    "model": "deepseek-r1-7b",
+    "gpu": "L4",
+    "precision": "fp8",
+    "profile": "sweep",
+    "strategies": 10,
+    "max_concurrency": null,
+    "duration_s": 60.0,
+    "requests_ok": 14,
+    "requests_err": 0,
+    "ttft_ms": {
+      "median": 117.9,
+      "mean": 122.72,
+      "p50": 117.9,
+      "p90": 122.39,
+      "p95": 181.29,
+      "p99": 181.29
+    },
+    "itl_ms": {
+      "median": 34.44,
+      "mean": 34.42,
+      "p50": 34.44,
+      "p90": 34.49,
+      "p95": 34.5,
+      "p99": 34.5
+    },
+    "tpot_ms": {
+      "median": 35.1,
+      "mean": 35.11,
+      "p50": 35.1,
+      "p90": 35.15,
+      "p95": 35.61,
+      "p99": 35.61
+    },
+    "req_latency_s": {
+      "median": 4.49,
+      "mean": 4.49,
+      "p50": 4.49,
+      "p90": 4.5,
+      "p95": 4.56,
+      "p99": 4.56
+    },
+    "throughput": {
+      "req_per_s": 0.22,
+      "output_tok_per_s": 28.56,
+      "total_tok_per_s": 86.79
+    },
+    "tokens": {
+      "prompt_median": 261.0,
+      "output_median": 128.0
+    },
+    "guidellm_version": "0.7.1",
+    "raw": "results/deepseek7b-fp8-sweep.json"
+  },
+  {
     "run": "mistral7b-awq-sweep",
     "model": "mistral-7b",
     "gpu": "L4",
