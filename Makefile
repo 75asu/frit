@@ -137,6 +137,8 @@ sync: ## deliver gitops changes: commit first, then this pushes laptop->GitHub->
 # -- GPU checks + chaos (over SSH) --------------------------------------------
 run: ## run any command on the VM. Usage: make run CMD="nvidia-smi"
 	@$(ONVM) "$(CMD)"
+verify: ## GATE: confirm the ACTIVE model is actually serving + generating (run before a benchmark)
+	@$(ONVM) "sudo bash /opt/frit/bin/verify-serve.sh"
 metrics: ## live GPU stats from the VM
 	@$(ONVM) "nvidia-smi --query-gpu=name,temperature.gpu,power.draw,utilization.gpu,memory.used,memory.total --format=csv"
 chaos: ## list chaos experiments
