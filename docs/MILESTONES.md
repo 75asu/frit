@@ -24,6 +24,8 @@ GPU observability, inference SLOs, chaos engineering, load testing, postmortems,
 
 > **Status note (2026-06-09):** M0 done, M2 core done (DCGM->Prometheus->Grafana dashboard 12239 live), **M3 done** -- vLLM (Qwen3-4B) + LiteLLM + Open WebUI serving on the T4, a ServiceMonitor scraping the engine, and a GitOps-delivered Grafana dashboard ("vLLM Token Path -- SLO & TTFT") showing TTFT p50/p90/p99, the SLI (% under 500ms), error budget, throughput and saturation. Added `make sync` (one-command laptop->GitHub->Gitea->Flux delivery) and hardened the engine liveness probe (chart default had no `timeoutSeconds`, so k8s's 1s default was killing the engine under load). **Known issues (backlog):** the production-stack router doesn't re-register the engine after a restart; the T4 saturates under burst load (now degrades gracefully -- engine stays up -- instead of being killed). Moved off Lightning.ai entirely; the lab runs on the GCP T4. The four-session plan below is the original Lightning.ai-era sequence, kept for historical context only -- the Milestone Overview table above is the live source of truth.
 
+> **Status note (2026-07-30):** Since the note above: built a cluster-native **guidellm** load-test harness + a multi-model **serving matrix** (qwen-0.5B/3-4B, mistral-7B 4-precision, deepseek-R1-distill-7B 4-precision) on a multi-node **T4+L4** cluster (the T4 head_dim-128 wall drove the L4 move), a frit-native benchmark site, model-warm pre-download hardening, and a `make verify` serve-gate. **Roadmap change:** added **M6.2 (Autoscaling + Queue Mgmt)** from the AIRE JD-signal analysis (`career-ops/jobs/JD/JD_SIGNAL_CROSS_COMPARE.md`) -- it was the one thing mid-level AIRE / ML-infra-SRE roles demand that the milestones missed. Next sequence: finish DeepSeek benchmarks -> M4 SLOs -> M6 load-test -> M6.2 autoscaling -> M6.5 HA.
+
 Repo: `github.com/binarysquadd/frit`
 Related: [Kiln](https://github.com/binarysquadd/kiln) — the isolation platform this reliability layer will eventually run on top of.
 
@@ -79,6 +81,7 @@ Related: [Kiln](https://github.com/binarysquadd/kiln) — the isolation platform
 | M5.5 | Eval & Safety Gate | NOT STARTED | eval suite, canary promotion gate | "the eval gate anthropic wished they'd had" |
 | M5.6 | Safeguard Model Serving | NOT STARTED | guard model, stricter SLO, fail-safe policy | "serving a safety model" |
 | M6 | Load Testing | NOT STARTED | k6 scripts, breaking point documented | "load testing an llm serving stack" |
+| M6.2 | Autoscaling + Queue Mgmt (GPU inference) | NOT STARTED | HPA/KEDA on queue+GPU signals, holds SLO under burst, real multi-L4 scale-out | "autoscaling gpu inference under burst" |
 | M6.5 | HA & Failover (simulated multi-region) | NOT STARTED | active-passive failover, measured RTO | "failover for llm serving" |
 | M7 | Chaos + Postmortems | NOT STARTED | chaos-injector CLI, 5+ experiments, 3 postmortems | one article per experiment |
 | M8 | Cadence + OSS Contributions | ONGOING (starts M3) | 12 ops reviews, 2 merged OSS PRs | monthly summary post |
@@ -324,6 +327,28 @@ Open WebUI / Aider (CLI)
 **Done when:** You can answer "at what RPS does this system break its TTFT SLO?" with a specific number and the data to back it up.
 
 **Content:** dev.to article — "load testing an llm serving stack: the numbers that actually matter" — cover: why GPU-bound load tests are different from CPU-bound, what TTFT does under load, the specific breaking point found.
+
+---
+
+## M6.2: Autoscaling + Queue Management for GPU Inference
+
+**Status:** NOT STARTED -- added from the JD gap analysis (`career-ops/jobs/JD/JD_SIGNAL_CROSS_COMPARE.md`).
+**Placement:** after M6 (you know the breaking point), before M6.5. M6 *finds* the limit; M6.2 *survives* it.
+
+**Goal:** the single most-demanded thing across mid-level AIRE / ML-infra-SRE roles, and the one the roadmap was missing: keep inference within SLO under variable, bursty load by autoscaling + queuing + load-balancing, instead of just shedding requests or breaching. This is Photoroom's entire job ("load balancing, autoscaling, queuing, traffic management at scale") and shows up implicitly in every ML-infra SRE JD.
+
+**What gets built:**
+- **Replica autoscaling on the RIGHT signal:** Ray Serve autoscaling (min/max replicas, `target_ongoing_requests`) and/or KEDA/HPA driven by **queue depth / request-rate / GPU utilisation**, not CPU. Compare which trigger holds SLO best.
+- **Real multi-node scale-out (not just single-node replicas):** spin up additional **L4 nodes** (the T4+L4 multi-node join tooling already exists) and run **data-parallel** inference replicas across the cluster, load-balanced behind the Ray Serve service. L4 Spot is cheap enough to actually do, so this is *real* horizontal scale, not simulation. (H100/A100 tensor-parallel + NVLink is a different axis = M9.)
+- **Request queue + concurrency control** in front of the engine so a burst queues with backpressure instead of overrunning the GPU.
+- **Load balancing** across replicas/nodes; observe KV-cache-aware / least-busy routing.
+- **The proof:** re-run the M6 burst (e.g. 5x spike) with autoscaling ON vs OFF, and show TTFT p99 stays under SLO with autoscaling where the static setup breached it.
+
+**Done when:** under a 5x burst load test, autoscaling (more replicas + a second L4 node) holds TTFT p99 under the M4 SLO where the static single-node setup breached it, with the scale-up/scale-down + queue behaviour on a Grafana panel.
+
+**Content:** dev.to article -- "autoscaling gpu inference to hold an slo under burst: queue-depth triggers, multi-node L4 scale-out, and what breaks."
+
+**Why (AIRE):** Photoroom's core requirement almost verbatim, and the highest-ROI gap-filler from the JD-signal analysis. Also the honest answer to the "scale" gap -- a real multi-L4 fleet is genuine horizontal scale a homelab *can* do (H100-class scale it can't; be honest about that line).
 
 ---
 
