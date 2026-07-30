@@ -3,19 +3,13 @@ kind: Kustomization
 resources:
   # HelmRepositories
   # (prometheus-community source moved to apps/controllers/monitoring/ — the CRD-provider layer)
-  - sources/vllm.yaml
+  # (vllm production-stack repo removed with the dead vllm stack — inference is Ray Serve now)
   - sources/open-webui.yaml
   - sources/langfuse.yaml
   - sources/litellm.yaml
   # Monitoring CONFIGS (CRs that need the Prometheus Operator CRDs from apps-controllers).
   # The kube-prometheus-stack chart + namespace live in apps/controllers/monitoring/.
-  - monitoring          # grafana ESO + dashboards (vllm-slo + Ray's own serve/serve-deployment)
-  # vLLM — inference engine with prefix-aware routing (production-stack chart)
-  - vllm/namespace.yaml
-  - vllm/helmrelease.yaml
-  - vllm/hf-token-externalsecret.yaml
-  - vllm/pdb.yaml
-  - vllm/servicemonitor.yaml
+  - monitoring          # grafana ESO + dashboards (vllm-slo + Ray's serve/serve-deployment/serve-llm + DCGM)
   # Ray Serve — RayService serving path on one GPU (the KubeRay operator lives in infra).
   # ray/ has its own kustomization: RayService + service. Models = ONE file per model in
   # ray/model-configs/; the active one is injected as serveConfigV2 (switch in ray/kustomization.yaml).
