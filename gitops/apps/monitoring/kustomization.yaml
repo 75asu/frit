@@ -11,7 +11,10 @@ resources:
 # (/tmp/ray/session_latest/metrics/grafana/dashboards/). These are the official Ray dashboards and
 # match our exact ray_serve_* metrics + labels, so nothing is hand-authored.
 #   serve + serve-deployment  -> ray_serve_* (request rate, queue, latency, replicas) , LIVE now (step 1)
-#   serve-llm (added at step 2) -> the vllm: engine metrics (TTFT/ITL/tokens/KV)
+#   serve-llm                 -> the vLLM ENGINE metrics. Ray exports vllm:* engine metrics (default-on
+#     since Ray 2.51, log_engine_metrics) sanitized to ray_vllm_* (TTFT/ITL/TPOT, e2e latency, prompt+
+#     generation tokens, prefix-cache), already scraped by the step-1 PodMonitor. This board (Ray's own,
+#     40 panels) queries those exact ray_vllm_* names, so no config change was needed to light it up.
 # Delivered as a ConfigMap labelled grafana_dashboard=1, which the kube-prometheus-stack Grafana
 # sidecar auto-imports (same mechanism as vllm-slo-dashboard).
 configMapGenerator:
@@ -23,3 +26,4 @@ configMapGenerator:
     files:
       - serve.json=dashboards/serve_grafana_dashboard.json
       - serve-deployment.json=dashboards/serve_deployment_grafana_dashboard.json
+      - serve-llm.json=dashboards/serve_llm_grafana_dashboard.json
