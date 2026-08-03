@@ -33,6 +33,10 @@ Related: [Kiln](https://github.com/binarysquadd/kiln) — the isolation platform
 
 ---
 
+> **Status note + priority REVISION (2026-08-03):** two JDs from **White Circle** (AI-safety startup, Paris/London, $11M seed May 2026) overturn part of the 2026-07-30 parking decision. Their MLOps Engineer JD asks verbatim for *"smoke, quality, and performance gates for model promotion"*, *"quality regression tests against benchmarks"* and *"quality drift"* dashboards -- that is **M5.5**. Their whole product is a real-time guard layer whose benchmark (CircleGuardBench) **caps the latency term at 0.7 for "production viability"** -- that is **M5.6**. The 2026-07-30 call parked both as "Anthropic-specific bets, low demand" against 8 JDs; these are the 9th and 10th and they demand both. **UN-PARKED: M5.5 (harness/gate half) and M5.6 (now the near-term flagship).**
+> **Second, independent driver , the general argument:** any team migrating from a hosted frontier API to self-hosted open-weight models **inherits a safety tier it never had to build.** Hosted providers ship refusal training, moderation endpoints and constitutional classifiers behind the API; open weights arrive with markedly weaker refusal behaviour and are far easier to jailbreak. Most agent frameworks ship a guardrail *interface* (input/output hooks, allow/block/transform, a fail-open default) long before they ship a guardrail *model* -- so the shipped defaults tend to be length caps and regex denylists, which catch nothing semantic. Add tool-calling agents that read untrusted web content, and the risk class moves from "said something bad" to "took an unauthorised action". **That is the gap this milestone measures the cost of closing.**
+> **New BUILD-NEXT order:** **M5.6 guard-model serving** (runs on the existing L4, no second Spot VM, fastest to a publishable artifact, dual-purpose: an audition artifact plus a public benchmark on an unmeasured question) -> **M6.2 autoscaling + queue mgmt** (already fully scoped below; "queue depth" is also named in the White Circle JD) -> **M5.5 eval/quality gate** -> **M9 multi-GPU/NCCL/RDMA** -> M14 platform. Still parked: M4 alerting, M10 TPU, M11 firmware ops.
+
 ## The Four-Session Execution Plan
 
 **Session 2 (completes M0, historical):**
@@ -80,10 +84,10 @@ Related: [Kiln](https://github.com/binarysquadd/kiln) — the isolation platform
 | M3.5 | Distributed Tracing (token path) | NOT STARTED | OTEL Collector + Tempo, trace/metric/log correlation | "tracing the llm token path" |
 | M4 | SLOs + Alerting | NOT STARTED | SLO.md, Alertmanager rules, error budget | "designing slos for inference workloads" |
 | M5 | Multi-Platform Simulation | NOT STARTED | 3 gateways, canary config, equivalence checker | "how anthropic's routing layer works" |
-| M5.5 | Eval & Safety Gate | NOT STARTED | eval suite, canary promotion gate | "the eval gate anthropic wished they'd had" |
-| M5.6 | Safeguard Model Serving | NOT STARTED | guard model, stricter SLO, fail-safe policy | "serving a safety model" |
+| M5.5 | Eval & Safety Gate | **UN-PARKED (3rd in order)** | eval suite, canary promotion gate | "the eval gate anthropic wished they'd had" |
+| M5.6 | **Guard-Model Serving (latency budget)** | **NEXT UP** | guard on the L4, p99 + 2x call multiplier, vLLM vs SGLang, fail-open vs fail-closed under saturation | "what a guard model actually costs" |
 | M6 | Load Testing | NOT STARTED | k6 scripts, breaking point documented | "load testing an llm serving stack" |
-| M6.2 | Autoscaling + Queue Mgmt (GPU inference) | NOT STARTED | HPA/KEDA on queue+GPU signals, holds SLO under burst, real multi-L4 scale-out | "autoscaling gpu inference under burst" |
+| M6.2 | Autoscaling + Queue Mgmt (GPU inference) | **2nd in order** (scoped, ready) | HPA/KEDA on queue+GPU signals, holds SLO under burst, real multi-L4 scale-out | "autoscaling gpu inference under burst" |
 | M6.5 | HA & Failover (simulated multi-region) | NOT STARTED | active-passive failover, measured RTO | "failover for llm serving" |
 | M7 | Chaos + Postmortems | NOT STARTED | chaos-injector CLI, 5+ experiments, 3 postmortems | one article per experiment |
 | M8 | Cadence + OSS Contributions | ONGOING (starts M3) | 12 ops reviews, 2 merged OSS PRs | monthly summary post |
@@ -275,8 +279,10 @@ Open WebUI / Aider (CLI)
 
 ## M5.5: Eval & Safety Gate (Regression Detection)
 
-**Status:** NOT STARTED
+**Status:** **UN-PARKED 2026-08-03, harness/gate half promoted.** Third in the new build order (after M5.6, after M6.2).
 **Placement:** right after M5 -- promotes the M5 equivalence checker into a continuous, blocking gate.
+
+> **Why it came back:** the 2026-07-30 scan parked this as an Anthropic-specific bet. White Circle's MLOps JD then asked for it verbatim -- *"create smoke, quality, and performance gates for model promotion"*, *"quality regression tests against benchmarks"*, and dashboards for *"quality drift"* -- at a company whose two public repos (`circle-guard-bench`, `killbench`) **are eval harnesses**, built to the same recurring shape: model registry as config, pluggable inference backends, Jinja prompt templates, bounded per-model concurrency, incremental checkpointed results, and a composite score mixing quality **with latency**. Build the harness to that shape: it is simultaneously this milestone and the most probable take-home task.
 
 **Goal:** Build the exact thing Anthropic's September 2025 postmortem says they lacked: *"detection took weeks because [we] lacked sensitive enough evaluations,"* and *"canary deployment didn't catch the issues because evaluations weren't sensitive enough."* Make eval failures block a bad canary automatically.
 
@@ -294,24 +300,33 @@ Open WebUI / Aider (CLI)
 
 ---
 
-## M5.6: Safeguard Model Serving (Safety-Critical Path)
+## M5.6: Guard-Model Serving -- the latency budget nobody publishes
 
-**Status:** NOT STARTED
-**Placement:** after M5.5 -- a second, safety-critical serving path with its own SLO.
+**Status:** **NEXT UP (un-parked + rescoped 2026-08-03).** Runs entirely on the existing `asu-l4` -- no second VM, no new Spot cost. Fastest path to a publishable artifact in the project.
+**Placement:** moved AHEAD of M6.2 and M5.5. It is the cheapest publishable artifact left in the project, and it lands in the idiom inference-infra interviewers actually read: pinned commits, stated warmup and iteration counts, tails not means.
 
-**Goal:** Serve a guard/moderation model as a separate path with a *stricter* SLO than the model it protects. Straight from the JD: *"Support the reliability of safeguard model serving -- critical for both site reliability and Anthropic's safety commitments."*
+**What a guard model is, for the record:** a small classifier LLM (1-8B) that sits **inline and serially** on the request path and *judges* text instead of generating an answer. Input guard before the main model sees the prompt (jailbreak, prompt injection, PII, malicious intent); output guard before the response reaches the user (harmful content, data leakage); increasingly a **tool-call guard** for agents, where the risk class shifts from "said something bad" to "took an unauthorised action". Named implementations: Meta **Llama Guard** / **Prompt Guard**, Google **ShieldGemma**, OpenAI `gpt-oss-safeguard`, Anthropic's constitutional classifiers.
+
+**Why it is a genuinely distinct inference-perf problem (the whole point of this milestone):**
+- **Its latency adds directly to user-perceived latency**, because it is serial and inline. A 300ms TTFT plus an 80ms guard is a 27% regression on every single request.
+- **One user request = 2+ guard inferences** (input and output), more under streaming, where you either buffer the response or check it chunk by chunk. That is a hard multiplier on cost per successful request.
+- **It is prefill-dominated, not decode-dominated.** A guard emits a handful of tokens, so the entire perf profile inverts versus every sweep in `docs/bench/` so far. Batching behaviour, KV-cache utilisation and the optimal engine config are all different -- a vLLM config tuned for a 7B chat model is the *wrong* config for a 1B classifier.
+- **Fail-open vs fail-closed is a live reliability decision under saturation**, not a config default: guard times out or crashloops, do you block all traffic (safe, self-inflicted outage) or pass it through (available, unsafe)?
 
 **What gets built:**
-- A second vLLM serving a small guard model (Llama-Guard-class or a lightweight classifier), behind LiteLLM as a pre/post filter on requests
-- A dedicated SLO for the guard path with a higher availability target than the main model, plus an explicit **fail-closed vs fail-open** policy (a safety path must not silently fail open)
-- Chaos tie-in: kill the guard model and verify the system enforces the defined fail-safe behavior and pages
-- Grafana: guard-path availability + decision latency tracked separately from the main model
+- **Llama Guard or ShieldGemma served on the L4** alongside (not replacing) the active model, behind the LiteLLM gateway as a pre/post filter
+- **The measurement, which is the actual deliverable:** added guard latency at p50/p95/**p99**, its effect on end-to-end TTFT, throughput-versus-latency curves, and **cost per successful request** with the 2x call multiplier made explicit
+- **Engine comparison: vLLM vs SGLang on the same guard model.** Methodology documented the way `advpropsys/fp4-blackwell-bench` documents it -- pinned upstream commits, pinned deps, per-engine `uv` venvs, stated warmup count, stated measured-iteration count, cache state between configs. One command to rerun.
+- **Prefill-vs-decode contrast** against the existing DeepSeek/Mistral sweeps -- the interesting result is *why* the guard's optimal config differs
+- **Fail-open vs fail-closed under saturation:** drive the guard past its knee and show both policies' behaviour, with the availability/safety tradeoff quantified rather than asserted
+- Separate SLO + Perses/Grafana panels for the guard path: decision latency and availability tracked independently from the main model
+- Chaos tie-in (feeds M7): kill the guard, verify the configured fail-safe fires and pages
 
-**Done when:** requests traverse the guard model; killing it triggers the defined fail-safe behavior and an alert; the guard-path SLO is tracked independently.
+**Done when:** a published benchmark answers "what does a guard model actually cost you, in milliseconds and in dollars per request" with reproducible methodology, plus a documented fail-open/fail-closed recommendation backed by saturation data.
 
-**Content:** dev.to article -- "serving a safety model: why the guard path needs a stricter slo than the model it guards."
+**Content:** the highest-leverage post in the project. dev.to plus an X thread with one chart -- *"what a guard model actually costs: p99 latency, the 2x call multiplier, and why your chat-model vLLM config is wrong for a classifier."* Numbered results, pinned commits, mechanism explanation for any engine delta. No takes.
 
-**Why (AIRE):** safeguard serving is named explicitly in the JD and ties reliability to Anthropic's safety commitments -- a differentiator no generic observability project has.
+**Why now (evidence, not vibes):** CircleGuardBench's composite score multiplies in a latency term **capped at 0.7 for production viability** -- an AI-safety company built latency into the *definition* of a correct guardrail, and nobody has published the serving-side numbers. And anyone sizing a self-hosted replacement for a hosted API needs exactly this number in order to budget for it.
 
 ---
 
@@ -335,7 +350,7 @@ Open WebUI / Aider (CLI)
 
 ## M6.2: Autoscaling + Queue Management for GPU Inference
 
-**Status:** NEXT UP -- approach decided 2026-07-30, real multi-node L4 scale-out (not single-node replicas). Starts next session.
+**Status:** **2nd in the build order (was NEXT UP; M5.6 jumped ahead 2026-08-03 because it needs no second VM and is triple-purpose).** Approach decided 2026-07-30, real multi-node L4 scale-out (not single-node replicas). Fully scoped below, ready to execute -- and "queue depth" is named verbatim in the White Circle MLOps JD.
 **Placement:** after M6 (you know the breaking point), before M6.5. M6 *finds* the limit; M6.2 *survives* it.
 
 **Decided approach (2026-07-30) -- real multi-node L4 scale-out. Execution plan (resume here):**
@@ -623,7 +638,7 @@ github.com/binarysquadd/frit/
 | M4 | "designing slos for inference workloads: what's different from web services" | When M4 is done |
 | M5 | "how anthropic's routing layer works: a homelab reconstruction" | When M5 is done |
 | M5.5 | "the eval gate anthropic wished they'd had: catching output corruption before users do" | When M5.5 is done |
-| M5.6 | "serving a safety model: why the guard path needs a stricter slo" | When M5.6 is done |
+| M5.6 | "what a guard model actually costs: p99 latency, the 2x call multiplier, and why your chat-model vLLM config is wrong for a classifier" | When M5.6 is done |
 | M6 | "load testing an llm serving stack: the numbers that actually matter" | When M6 is done |
 | M6.5 | "failover for llm serving: measuring rto when the primary gpu backend dies" | When M6.5 is done |
 | M7 | "chaos experiment #N: [what broke and what the alert showed]" | After each experiment |
