@@ -275,6 +275,35 @@ Open WebUI / Aider (CLI)
 
 **Content:** dev.to article — "how anthropic's routing layer works: a homelab reconstruction" — cover: the postmortem patterns, what canary routing looks like in LiteLLM, why equivalence validation matters and how to implement it cheaply.
 
+### M5b , CAPABILITY tiering (a cascade), added 2026-08-03
+
+The three backends above are a **degradation** ladder: same model, different speed. That is not tiering. **Tiering is a capability + cost ladder with an escalation policy** , the standard cost-control pattern for LLM serving (FrugalGPT, RouteLLM, and every frontier lab's own small/mid/large family). Cheap tier absorbs the bulk; expensive tier only sees the hard cases. Build it as a distinct thing.
+
+**Four components. Only the first is obvious.**
+1. **The tiers.** Two independent axes, and frit already has material on both:
+   - **Model-size axis:** the Qwen3 family gives a clean ladder on one tokenizer/chat template , **0.5B -> 4B -> 7-8B**. frit already has 0.5B and 3-4B benchmarked.
+   - **Precision axis:** the existing **4-precision sweeps** (awq-int4 / awq-marlin / fp8 / fp16) on mistral-7B and deepseek-7B are four cost points from **one** weight source. Cheaper to operate than four model families. This is what production does.
+   - Tier 0 can be the **guard/classifier model from M5.6** , it is already the smallest thing in the fleet.
+2. **The escalation trigger** , where these projects live or die. Ranked by reliability: **rule-based on the input** (type, jurisdiction, tenant class) > **a small judge model scoring tier-1 output** > **logprob/entropy-based uncertainty** > **model self-reported confidence** (unreliable, don't). Implement at least two and compare.
+3. **The escalation rate , the headline metric of the whole milestone.**
+   `blended_cost = (1 - r) * tier1 + r * (tier1 + tier2)`
+   The rate `r` **drifts** as inputs, models, and tenants change, and when it drifts **margin moves while every per-tier cost dashboard still looks healthy.** Instrument `r` per tenant and per input class, chart blended cost against it, and **alert on it**. This is the number a cascade actually runs on and almost nobody publishes it.
+4. **Per-tier SLOs, and the trap:** in a cascade **tail latency is ADDITIVE, not maximum.** At 10% escalation, p90 is tier-1 latency but p99 is tier-1 **plus** tier-2. Cascades trade average cost against the tail. Measure and state this before promising a p99.
+
+**The connective insight worth more than the milestone:** **graceful degradation and tiering are the same mechanism.** Once a tier router exists, "fall back to the cheap tier when the good tier saturates" is free. Reliability work and cost work become one project instead of two competing budget lines.
+
+### Solving the "I can only load one model" problem , multi-LoRA
+
+The real constraint on a single 24GB L4 is fitting a fleet. Options, best first:
+- **vLLM multi-LoRA** (`--enable-lora`, `--lora-modules`) , **serve ONE base model plus N adapters, swapped per request.** This is the answer to "we can only fine-tune and load one model", and it is exactly how a multi-tenant platform serves per-tenant fine-tunes without per-tenant GPUs. **Highest-value single technique in this whole area.** Pull public adapters from HF, or train tiny ones.
+- **Co-resident small models on one card:** 0.5B fp8 (~0.5GB) + 4B fp8 (~4GB) + 7B awq-int4 (~4GB) coexist in 24GB with KV headroom, if `--gpu-memory-utilization` is partitioned per instance (e.g. 0.15 / 0.30 / 0.40) instead of the usual 0.9.
+- **GPU time-slicing** via the NVIDIA device plugin (`timeSlicing.replicas`) to let multiple pods share one card. **MIG is NOT available on L4 or T4** , A100/H100/Blackwell only, so it stays an M9-burst item.
+- **Scale-to-zero per tier** for the cold tiers. Cheap, but cold-start latency makes it a poor demo for a latency story.
+
+**On fine-tuning without proprietary data:** don't try to replicate a domain fine-tune from work. Train a small LoRA with PEFT/Unsloth on the L4 (a 1-3B LoRA fits comfortably) over **public data**. **OpenSanctions and the OFAC SDN list are open datasets** , a fuzzy-name-matching / screening-triage LoRA is domain-adjacent, uses zero proprietary input, and is publishable. That gets the fine-tune-to-serve loop practised end to end with nothing to scrub.
+
+**Done when:** a request is classified, routed to the cheapest sufficient tier, escalated by a measured trigger, and the dashboard shows **escalation rate, blended cost per request, and per-tier p99** , plus a saturation run proving the cascade degrades to the cheap tier instead of breaching.
+
 ---
 
 ## M5.5: Eval & Safety Gate (Regression Detection)
@@ -580,6 +609,27 @@ Current state at decision time: frit runs as a **standalone single L4** (`asu-l4
 **Content:** dev.to article -- "building a self-service gpu platform: scheduling, multi-tenancy, and MIG/MPS tiers on a homelab fleet."
 
 **Why (AIRE):** Sarvam's JD almost verbatim (your #1 realistic, no-visa, sovereign-AI target), plus the platform-build signal across Databricks + Modal. The single milestone that most moves the needle on your best landable role.
+
+### M14b , SERVING-side admission control (added 2026-08-03)
+
+The scheduling above is **job**-level (Kueue/Volcano, gang scheduling, preemption). A shared *inference endpoint* needs a second, separate layer, and this is the thing that makes it a platform rather than a shared box. **Without it one tenant starves the others and the platform owner gets blamed.**
+
+- **Per-tenant rate + budget limits.** LiteLLM has this natively , **virtual keys with per-key TPM/RPM limits and spend budgets.** Cheapest possible way to practise real admission control; no custom code.
+- **Priority queues + backpressure + request shedding.** Decide and measure the policy: does a low-priority tenant queue, get shed with a 429, or get demoted to the cheap tier? (That last one is the M5b router again , same mechanism.)
+- **Per-tenant attribution end to end** , tenant label on every metric, so cost, latency and error rate are sliceable per tenant. This is what makes ducat-style **showback** possible.
+- **Noisy-neighbour demo:** one tenant floods, and prove the others hold their SLO. That single experiment is the whole milestone's evidence.
+
+### M15 , Model release engineering + audit trail (NEW 2026-08-03)
+
+Two capabilities that are entirely absent from frit, both business-facing, and both miserable to retrofit.
+
+**Release engineering** , currently a model is an init container pulling weights from object storage. Production needs: a **model registry** with versioned artifacts, **canary by traffic percentage**, **shadow / mirror traffic** (send live requests to a candidate model, compare, serve none of it), **promotion gates** wired to the M5.5 eval gate and to a perf-regression gate, and **rollback**. A 2-3 model-release-per-week cadence is a stated requirement in real MLOps JDs and is impossible without this.
+
+**Audit trail** , an immutable record of every inference: who asked, which **model version**, which data sources, what came back, which policy fired. Any regulated or public-sector customer requires it, and it is arguably a **bigger differentiator than cost** because cost is competable and compliance evidence is not.
+
+**Also folded in here:** perf-regression gates in CI (the `make verify` serve-gate is the seed), cost-anomaly alerting, and a written capacity policy (headroom target, spot/reserved mix, scale-to-zero for non-prod, per-tenant quota).
+
+**Done when:** a model version is promoted through shadow -> canary -> full behind eval and perf gates, rolled back on a planted regression, and every request in the run is reconstructable from the audit log with its model version.
 
 ---
 
