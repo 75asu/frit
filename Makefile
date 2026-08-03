@@ -92,6 +92,9 @@ use-t4: ## switch active machine -> T4 (asu-sandbox). Then: make up | down | tun
 use-l4: ## switch active machine -> L4 (asu-l4). Then: make up | down | tunnel
 	@test -f .env.l4 || { echo "no .env.l4 -- create it first (cp .env .env.l4; set GCP_VM_NAME=asu-l4, GCP_ZONE=asia-south1-b, LAB=l4; clear VAULT_* + TARGET_HOST)"; exit 1; }
 	@cp .env.l4 .env && echo ">>> active = L4 (asu-l4)"
+use-a100: ## switch active machine -> A100 (asu-a100, Singapore, 2x A100 SXM4 NVLink). Then: make up | down
+	@test -f .env.a100 || { echo "no .env.a100 -- create it first (cp .env .env.a100; set GCP_VM_NAME=asu-a100, GCP_ZONE=asia-southeast1-b, LAB=a100; clear VAULT_* + TARGET_HOST)"; exit 1; }
+	@cp .env.a100 .env && echo ">>> active = A100 (asu-a100) -- MOST EXPENSIVE BOX (~\$$2-3/hr Spot). 'make down' when idle."
 active: ## show which machine .env currently targets
 	@echo "active LAB=$(LAB)  VM=$(GCP_VM_NAME)  zone=$(GCP_ZONE)"
 save: ## persist the active .env back to its per-machine source (.env.$(LAB)) -- run after `up` mints Vault creds
@@ -99,11 +102,25 @@ save: ## persist the active .env back to its per-machine source (.env.$(LAB)) --
 	@cp .env .env.$(LAB) && echo ">>> saved active .env -> .env.$(LAB) (Vault creds + coords persisted for next start)"
 labs: ## list the per-machine env files present
 	@for f in .env.t4 .env.l4; do [ -f $$f ] && echo "  $$f: $$(sed -nE 's/^GCP_VM_NAME=//p' $$f) @ $$(sed -nE 's/^GCP_ZONE=//p' $$f)"; done
-stop-all: ## END OF SESSION: stop BOTH VMs (billing stops; disks + clusters persist)
-	@for f in .env.t4 .env.l4; do [ -f $$f ] && { echo ">>> stopping ($$f):"; ENV_FILE=$$f bin/vm.sh stop || true; }; done
-	@echo ">>> both stopped (whichever existed). Disks persist; Flux + Vault recover on next 'make up'."
-status-all: ## status + IP of BOTH VMs
-	@for f in .env.t4 .env.l4; do [ -f $$f ] && { echo "-- $$f --"; ENV_FILE=$$f bin/vm.sh status || true; }; done
+stop-all: ## END OF SESSION: stop EVERY lab VM (billing stops; disks + clusters persist)
+	@# Iterates every .env.* that names a VM -- so a newly added machine can NEVER be missed by the bill guard.
+	@for f in .env.*; do \
+	  [ -f "$$f" ] && grep -qE '^GCP_PROJECT=[^[:space:]#]' "$$f" && grep -qE '^GCP_VM_NAME=[^[:space:]#]' "$$f" || continue; \
+	  echo ">>> stopping ($$f):"; ENV_FILE=$$f bin/vm.sh stop || true; \
+	done
+	@echo ">>> all lab VMs stopped. Disks persist; Flux + Vault recover on next 'make up'."
+status-all: ## status + IP of EVERY lab VM
+	@for f in .env.*; do \
+	  [ -f "$$f" ] && grep -qE '^GCP_PROJECT=[^[:space:]#]' "$$f" && grep -qE '^GCP_VM_NAME=[^[:space:]#]' "$$f" || continue; \
+	  echo "-- $$f --"; ENV_FILE=$$f bin/vm.sh status || true; \
+	done
+bill-check: ## HARD CHECK: fail loudly if ANY lab VM is still RUNNING (use before walking away)
+	@bad=0; for f in .env.*; do \
+	  [ -f "$$f" ] && grep -qE '^GCP_PROJECT=[^[:space:]#]' "$$f" && grep -qE '^GCP_VM_NAME=[^[:space:]#]' "$$f" || continue; \
+	  s=$$(ENV_FILE=$$f bin/vm.sh status 2>/dev/null); \
+	  case "$$s" in *RUNNING*) echo "!!! STILL BILLING: $$s"; bad=1 ;; *) echo "ok: $$s" ;; esac; \
+	done; \
+	[ $$bad -eq 0 ] && echo ">>> clean: nothing is billing." || { echo ">>> run 'make stop-all' NOW"; exit 1; }
 
 # ── Multi-node cluster (T4 server + L4 agent, ONE k3s) ──
 cluster-firewall: ## create the GCP firewall rule for k3s node-to-node traffic (6443/10250/8472; idempotent)
