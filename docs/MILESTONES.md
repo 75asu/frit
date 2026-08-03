@@ -304,6 +304,25 @@ The real constraint on a single 24GB L4 is fitting a fleet. Options, best first:
 
 **Done when:** a request is classified, routed to the cheapest sufficient tier, escalated by a measured trigger, and the dashboard shows **escalation rate, blended cost per request, and per-tier p99** , plus a saturation run proving the cascade degrades to the cheap tier instead of breaching.
 
+### Which gateway to build this on (audited 2026-08-04, licences read from repo LICENSE files)
+
+Practise on something that a licence-restricted shop could actually adopt (Apache-2.0 / MIT only). Findings:
+
+| Project | Licence | Note |
+|---|---|---|
+| **Envoy AI Gateway** | Apache-2.0 | **1.0.0 GA Jun 2026**, CNCF-graduated Envoy project. **Only one with first-class TOKEN-based rate limiting** (`InputToken`/`OutputToken`/`TotalToken` + CEL expressions, keyed tenant x model) plus a separate **Quota Policy** for budgets. Supports **custom EPP providers** |
+| **Gateway API Inference Extension (GIE)** | Apache-2.0 (kubernetes-sigs) | The emerging **standard**: `InferencePool` CRD + ext-proc endpoint picker. Best-in-class **prefix-cache-aware routing** (heuristic + precise, event-driven KV index) and P/D orchestration |
+| **llm-d** | Apache-2.0 (all org repos) | The production EPP now lives here as **`llm-d-router`** |
+| **Apache APISIX** | Apache-2.0 (ASF) | **The only gateway with token-based AI rate limiting genuinely in the Apache tree** (`ai-rate-limiting.lua` in-tree). No corporate entity *can* relicense an ASF project. But **outside the GIE ecosystem** , no KV-cache-aware routing |
+| **LiteLLM** | **MIT + a proprietary `enterprise/` carve-out** (GitHub shows `NOASSERTION`) | Virtual keys, budgets, RPM/TPM and Prometheus **are MIT**, so fine for a personal lab. **SSO, audit logs, orgs/RBAC, secret managers and all guardrail callbacks are Enterprise**, and that licence forbids redistribution and **assigns your own patches back to the vendor** |
+| Kong Gateway OSS | Apache-2.0 | ⚠️ **Every `*-advanced` plugin is absent from the OSS tree.** `ai-proxy` is OSS; **`ai-rate-limiting-advanced` (the token limiter) is not.** OSS Kong = AI passthrough, not AI admission control |
+| agentgateway | Apache-2.0 | GIE-conformant; **kgateway moved its whole AI story here**, its own AI docs are now a redirect |
+| RouteLLM | Apache-2.0 | The only real **cascade** implementation (trained strong/weak difficulty classifier) , but **unpushed since Aug 2024** |
+
+**Build order for this milestone:** LiteLLM's MIT core is fine for the lab, but **practise the tenancy plane on Envoy AI Gateway** because it is the transferable skill and the licence-clean answer. Keep GIE/llm-d underneath for prefix-aware and P/D routing , the gateway is the ext-proc client, the EPP is the ext-proc server, they compose.
+
+> ⚠️ **The honest finding: no production gateway does difficulty-based cascade natively.** Not Envoy AI Gateway, not APISIX, not the EPP , the EPP picks *which replica of this model*, never *which model*. Model-level tiering is one layer up. Options: agentgateway conditional routing (if the signal is a request attribute), RouteLLM (unmaintained), or **a custom scorer at the EPP extension point** , architecturally the right seam (the `InferenceObjective` API and the "best cost / best performance" scheduler framing are built for it) but **it is code you write.** Budget for that; it is the interesting part of the milestone, not a config flag.
+
 ---
 
 ## M5.5: Eval & Safety Gate (Regression Detection)
