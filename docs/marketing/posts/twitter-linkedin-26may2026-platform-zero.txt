@@ -1,0 +1,11 @@
+full gitops inference stack on a T4 - one make up
+
+FLUX + VAULT + GPU OPERATOR + vLLM - gitops all the way down
+phi3 engine 1/1 Running, 3 bugs to get there
+
+next: DCGM in Grafana
+
+the inference behind these:
+75asu.github.io/frit/
+kiln.binarysquad.org
+truss.binarysquad.org
