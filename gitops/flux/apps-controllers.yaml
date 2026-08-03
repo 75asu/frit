@@ -3,7 +3,7 @@
 # Installs the apps-tier operators / CRD-providing charts (kube-prometheus-stack, which brings the
 # ServiceMonitor/PodMonitor/PrometheusRule CRDs). wait:true + the HelmRelease health check gate the
 # apps layer until the CRDs exist, so apps' ServiceMonitor CRs pass Flux's dry-run on a cold boot.
-# Pattern adopted from kubernetes/fravity-spine (controllers -> configs).
+# Standard production GitOps pattern: controllers (CRDs + operators) reconcile before configs.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
